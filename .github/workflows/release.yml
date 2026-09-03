@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: appfactory-project-automation-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare or publish release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize stable Action aliases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')"
+          if [[ ! "${latest_tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Latest stable release tag is not semver-compatible: ${latest_tag}" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+
+          git fetch origin --force --tags
+          release_sha="$(git rev-list -n 1 "${latest_tag}")"
+          if [[ -z "${release_sha}" ]]; then
+            echo "Unable to resolve ${latest_tag} to a commit." >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for alias in "v${major}" "v${major}.${minor}"; do
+            git tag -f "${alias}" "${release_sha}"
+            git push origin --force "refs/tags/${alias}"
+            echo "Updated ${alias} -> ${release_sha}"
+          done
+
+          # v1 existed historically as a branch before semantic release automation.
+          # Keep that compatibility ref synchronized while consumers migrate naturally
+          # to the standard major tag of the same name.
+          if git ls-remote --exit-code --heads origin "v${major}" >/dev/null 2>&1; then
+            git push origin --force "${release_sha}:refs/heads/v${major}"
+            echo "Updated legacy branch v${major} -> ${release_sha}"
+          fi
