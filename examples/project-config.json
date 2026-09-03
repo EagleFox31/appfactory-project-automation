@@ -1,0 +1,38 @@
+{
+  "project": {
+    "owner": "YOUR_GITHUB_LOGIN_OR_ORG",
+    "title": "Your Product Development"
+  },
+  "metadataCommentKey": "appfactory-project",
+  "fields": {
+    "status": "Status",
+    "priority": "Priority",
+    "workType": "Work type",
+    "phase": "Phase",
+    "size": "Size"
+  },
+  "statusTransitions": {
+    "issueOpened": "Backlog",
+    "issueReopened": "Backlog",
+    "issueClosed": "Done",
+    "draftPullRequest": "In Progress",
+    "pullRequestReady": "Review",
+    "pullRequestMerged": "Done"
+  },
+  "workTypeByTitlePrefix": {
+    "[Engineering]": "Engineering",
+    "[Feature]": "Feature",
+    "[Security]": "Security",
+    "[UX]": "UX",
+    "[Product]": "Product",
+    "[Bug]": "Bug"
+  },
+  "issueOverrides": {
+    "12": {
+      "priority": "P1",
+      "workType": "Feature",
+      "phase": "MVP",
+      "size": "L"
+    }
+  }
+}
