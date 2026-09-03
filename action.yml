@@ -20,5 +20,5 @@ runs:
   main: src/index.mjs
 
 branding:
-  icon: columns
+  icon: grid
   color: blue
