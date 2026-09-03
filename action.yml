@@ -1,17 +1,17 @@
 name: AppFactory Project Automation
-description: Synchronize GitHub Issues and linked pull requests with a GitHub Projects v2 board.
+description: Bootstrap and synchronize GitHub Projects v2 boards, Issues and linked pull requests.
 author: EagleFox31
 
 inputs:
   token:
-    description: GitHub token with access to the target Projects v2 board.
+    description: GitHub token with Projects v2 access and permission to create/update the configured Project when bootstrap is enabled.
     required: true
   config-path:
     description: Path to the repository-specific project configuration JSON file.
     required: false
     default: .github/project-config.json
   issue-number:
-    description: Optional issue number for workflow_dispatch resync. Accepts 15, #15, or issue_number = 15.
+    description: Optional issue number for workflow_dispatch resync. Leave empty to run Project bootstrap when enabled. Accepts 15, #15, or issue_number = 15.
     required: false
     default: ""
 
