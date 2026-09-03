@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  bootstrapFieldDefinitions,
   inferWorkType,
+  isBootstrapEnabled,
   issueMetadata,
+  mergeSingleSelectOptions,
   parseIssueNumber,
   parseProjectMetadata,
   pullRequestTargetStatus,
@@ -76,11 +79,72 @@ test('pull request lifecycle resolves expected statuses', () => {
   assert.equal(pullRequestTargetStatus({ action: 'closed', merged: false, draft: false }, transitions), undefined);
 });
 
-test('validateConfig fails fast for missing core fields', () => {
+test('validateConfig keeps legacy explicit configs working', () => {
   assert.throws(() => validateConfig({}), /project.owner/);
   assert.doesNotThrow(() => validateConfig({
     project: { owner: 'EagleFox31', title: 'Example' },
     fields: { status: 'Status' },
     statusTransitions: { issueOpened: 'Backlog', issueClosed: 'Done' }
   }));
+});
+
+test('appfactory-product template hydrates a minimal bootstrap config', () => {
+  const config = validateConfig({
+    project: {
+      owner: 'EagleFox31',
+      title: 'Example Product Development',
+      bootstrap: true,
+      template: 'appfactory-product'
+    },
+    bootstrap: { phases: ['Foundation', 'Release'] }
+  });
+
+  assert.equal(isBootstrapEnabled(config), true);
+  assert.equal(config.fields.priority, 'Priority');
+  assert.equal(config.statusTransitions.issueOpened, 'Backlog');
+  assert.equal(config.project.importOpenIssues, true);
+  assert.deepEqual(config.bootstrap.phases, ['Foundation', 'Release']);
+});
+
+test('bootstrap definitions discover repository-specific metadata options', () => {
+  const config = validateConfig({
+    project: {
+      owner: 'EagleFox31',
+      title: 'Example',
+      bootstrap: true,
+      template: 'appfactory-product'
+    },
+    bootstrap: { phases: ['Foundation'] },
+    issueOverrides: {
+      '8': { priority: 'P1', workType: 'UX', phase: 'Desktop MVP', size: 'XL' }
+    }
+  });
+
+  const definitions = bootstrapFieldDefinitions(config, [{
+    number: 9,
+    title: '[Feature] Export',
+    body: '<!-- appfactory-project\nphase: Reproducible Setup\n-->'
+  }]);
+  const phase = definitions.find((field) => field.key === 'phase');
+
+  assert.deepEqual(phase.options.map((entry) => entry.name), [
+    'Foundation',
+    'Desktop MVP',
+    'Reproducible Setup'
+  ]);
+});
+
+test('mergeSingleSelectOptions preserves existing option ids and only adds missing options', () => {
+  const merged = mergeSingleSelectOptions(
+    [{ id: 'opt_1', name: 'Backlog', color: 'GRAY', description: 'Existing' }],
+    [
+      { name: 'Backlog', color: 'BLUE', description: 'Desired' },
+      { name: 'Ready', color: 'BLUE', description: 'Ready' }
+    ]
+  );
+
+  assert.deepEqual(merged, [
+    { id: 'opt_1', name: 'Backlog', color: 'GRAY', description: 'Existing' },
+    { name: 'Ready', color: 'BLUE', description: 'Ready' }
+  ]);
 });
