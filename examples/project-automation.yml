@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: "Issue number to resync"
-        required: true
+        description: "Optional issue number to resync. Leave empty to bootstrap/reconcile the Project."
+        required: false
         type: string
 
 permissions:
