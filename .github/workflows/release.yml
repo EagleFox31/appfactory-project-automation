@@ -25,7 +25,18 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
 
-      - name: Repair a merged release whose GitHub Release is missing
+      - name: Prepare or publish release
+        id: release
+        continue-on-error: true
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Repair a failed semantic release if the GitHub Release is missing
+        id: repair
+        if: steps.release.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
         shell: bash
@@ -34,13 +45,13 @@ jobs:
 
           manifest_version="$(jq -r '."." // empty' .release-please-manifest.json)"
           if [[ ! "${manifest_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release manifest does not contain a valid root semantic version; skipping repair."
-            exit 0
+            echo "Release manifest does not contain a valid root semantic version; refusing to mask the Release Please failure." >&2
+            exit 1
           fi
 
           tag="v${manifest_version}"
           if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "${tag} already exists as a GitHub Release; no repair needed."
+            echo "${tag} already exists as a GitHub Release; treating the failed Release Please run as recovered."
             exit 0
           fi
 
@@ -67,14 +78,6 @@ jobs:
             --target "${repair_sha}" \
             --title "${tag}" \
             --generate-notes
-
-      - name: Prepare or publish release
-        id: release
-        uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
 
       - name: Synchronize stable Action aliases
         env:

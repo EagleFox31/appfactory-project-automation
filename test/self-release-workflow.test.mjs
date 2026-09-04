@@ -16,12 +16,14 @@ test('missing manifest release repair refuses to guess the target commit', () =>
   assert.match(workflow, /refusing to guess a release target/);
 });
 
-test('missing GitHub release is repaired from the manifest version before Release Please runs', () => {
-  const repairIndex = workflow.indexOf('Repair a merged release whose GitHub Release is missing');
+test('release repair only runs after Release Please fails', () => {
   const releasePleaseIndex = workflow.indexOf('Prepare or publish release');
+  const repairIndex = workflow.indexOf('Repair a failed semantic release if the GitHub Release is missing');
 
-  assert.ok(repairIndex >= 0);
-  assert.ok(releasePleaseIndex > repairIndex);
+  assert.ok(releasePleaseIndex >= 0);
+  assert.ok(repairIndex > releasePleaseIndex);
+  assert.match(workflow, /continue-on-error: true/);
+  assert.match(workflow, /if: steps\.release\.outcome == 'failure'/);
   assert.match(workflow, /gh release view/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /--target "\$\{repair_sha\}"/);
