@@ -75,7 +75,6 @@ jobs:
       release-type: simple
       target-branch: ${{ inputs.target-branch }}
       path: .
-      include-v-in-tag: true
       release-as: ${{ inputs.release-as }}
     secrets:
       release_token: ${{ secrets.release_token }}
