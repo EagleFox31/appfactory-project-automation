@@ -19,7 +19,7 @@ on:
         type: string
         default: .
       include-v-in-tag:
-        description: Prefix semantic release tags with v.
+        description: Deprecated compatibility input. Release Please v4 uses its default v tag prefix and this value is no longer forwarded.
         required: false
         type: boolean
         default: true
@@ -82,6 +82,5 @@ jobs:
           release-type: ${{ inputs.release-type }}
           target-branch: ${{ inputs.target-branch }}
           path: ${{ inputs.path }}
-          include-v-in-tag: ${{ inputs.include-v-in-tag }}
           versioning-strategy: ${{ inputs.versioning-strategy }}
           release-as: ${{ inputs.release-as }}
