@@ -24,19 +24,19 @@ test('generic release workflow is reusable and delegates semantic versioning to 
 });
 
 test('generic release workflow exposes release identity outputs', () => {
-  assert.match(reusableRelease, /release-created:/);
-  assert.match(reusableRelease, /tag-name:/);
+  assert.match(reusableRelease, /release_created:/);
+  assert.match(reusableRelease, /tag_name:/);
   assert.match(reusableRelease, /version:/);
-  assert.match(reusableRelease, /release-sha:/);
+  assert.match(reusableRelease, /release_sha:/);
 });
 
 test('dotnet release composes the release workflow from the same AppFactory commit', () => {
   assert.match(dotnetRelease, /uses: \$\/\.github\/workflows\/reusable-release\.yml/);
-  assert.match(dotnetRelease, /if: needs\.release\.outputs\.release-created == 'true'/);
+  assert.match(dotnetRelease, /if: needs\.release\.outputs\.release_created == 'true'/);
 });
 
 test('dotnet release builds the exact tagged commit with deterministic version metadata', () => {
-  assert.match(dotnetRelease, /ref: \$\{\{ needs\.release\.outputs\.release-sha \}\}/);
+  assert.match(dotnetRelease, /ref: \$\{\{ needs\.release\.outputs\.release_sha \}\}/);
   assert.match(dotnetRelease, /-p:ContinuousIntegrationBuild=true/);
   assert.match(dotnetRelease, /-p:Version=\$env:VERSION/);
 });
