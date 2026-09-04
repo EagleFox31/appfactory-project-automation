@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.0...v1.2.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* align reusable release with Release Please v4 ([3028d22](https://github.com/EagleFox31/appfactory-project-automation/commit/3028d22b493a3fe140de2c55aced9ca6a8a8f85c))
+* remove deprecated tag-prefix wiring ([358a34a](https://github.com/EagleFox31/appfactory-project-automation/commit/358a34a54cc7a62f0814b143801fe67c8712c14f))
+* stop forwarding removed Release Please v4 input ([239c949](https://github.com/EagleFox31/appfactory-project-automation/commit/239c9494f8ae45db58afd3674e93e5c108bdacd6))
+
 ## [1.2.0](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.1.0...v1.2.0) (2026-09-04)
 
 
