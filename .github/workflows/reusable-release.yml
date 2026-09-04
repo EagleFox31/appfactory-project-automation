@@ -1,0 +1,87 @@
+name: AppFactory reusable semantic release
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: Release Please strategy used by the consumer repository.
+        required: false
+        type: string
+        default: simple
+      target-branch:
+        description: Branch against which Release Please maintains the release PR.
+        required: false
+        type: string
+        default: main
+      path:
+        description: Repository path released by Release Please. Use '.' for a root product.
+        required: false
+        type: string
+        default: .
+      include-v-in-tag:
+        description: Prefix semantic release tags with v.
+        required: false
+        type: boolean
+        default: true
+      versioning-strategy:
+        description: Release Please versioning strategy.
+        required: false
+        type: string
+        default: default
+      release-as:
+        description: Optional one-time version override, useful for the first product release.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      release_token:
+        description: Optional token used instead of GITHUB_TOKEN so release PRs can trigger normal CI.
+        required: false
+    outputs:
+      release_created:
+        description: Whether this run created a GitHub Release.
+        value: ${{ jobs.release.outputs.release_created }}
+      release_pr_created:
+        description: Whether this run created or updated a Release PR.
+        value: ${{ jobs.release.outputs.release_pr_created }}
+      tag_name:
+        description: Tag created by Release Please when a release is published.
+        value: ${{ jobs.release.outputs.tag_name }}
+      version:
+        description: Semantic version created by Release Please.
+        value: ${{ jobs.release.outputs.version }}
+      release_sha:
+        description: Exact commit SHA tagged by Release Please.
+        value: ${{ jobs.release.outputs.release_sha }}
+      release_url:
+        description: GitHub Release URL when a release is published.
+        value: ${{ jobs.release.outputs.release_url }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      release_pr_created: ${{ steps.release.outputs.prs_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      release_sha: ${{ steps.release.outputs.sha }}
+      release_url: ${{ steps.release.outputs.html_url }}
+
+    steps:
+      - name: Prepare or publish semantic release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.release_token || github.token }}
+          release-type: ${{ inputs.release-type }}
+          target-branch: ${{ inputs.target-branch }}
+          path: ${{ inputs.path }}
+          include-v-in-tag: ${{ inputs.include-v-in-tag }}
+          versioning-strategy: ${{ inputs.versioning-strategy }}
+          release-as: ${{ inputs.release-as }}

@@ -1,0 +1,29 @@
+name: .NET desktop release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_as:
+        description: Optional one-time semantic version override for the first release, for example 0.1.0.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/release-dotnet-desktop.yml@v1
+    with:
+      project-path: src/MyProduct.Desktop/MyProduct.Desktop.csproj
+      product-name: MyProduct
+      runtime: win-x64
+      dotnet-version: 10.0.x
+      self-contained: true
+      release-as: ${{ inputs.release_as }}
+    secrets:
+      release_token: ${{ secrets.APPFACTORY_RELEASE_TOKEN }}
