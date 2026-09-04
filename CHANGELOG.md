@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.1...v1.2.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* defer self-release repair until Release Please fails ([6e1d31d](https://github.com/EagleFox31/appfactory-project-automation/commit/6e1d31d1a1fcfb04dfdc4ecaecad6a6b743bb743))
+* run release repair only after Release Please fails ([4349548](https://github.com/EagleFox31/appfactory-project-automation/commit/4349548ddc1717247902824095095592c74113f1))
+
 ## [1.2.1](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.0...v1.2.1) (2026-09-04)
 
 
