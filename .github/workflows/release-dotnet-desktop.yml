@@ -46,18 +46,18 @@ on:
         description: Optional token used instead of GITHUB_TOKEN so Release Please PRs can trigger CI.
         required: false
     outputs:
-      release-created:
+      release_created:
         description: Whether a GitHub Release was created.
-        value: ${{ jobs.release.outputs.release-created }}
-      tag-name:
+        value: ${{ jobs.release.outputs.release_created }}
+      tag_name:
         description: Published Git tag.
-        value: ${{ jobs.release.outputs.tag-name }}
+        value: ${{ jobs.release.outputs.tag_name }}
       version:
         description: Published semantic version.
         value: ${{ jobs.release.outputs.version }}
-      asset-name:
+      asset_name:
         description: Versioned ZIP asset uploaded when a release was created.
-        value: ${{ jobs.build.outputs.asset-name }}
+        value: ${{ jobs.build.outputs.asset_name }}
 
 permissions:
   contents: write
@@ -82,12 +82,12 @@ jobs:
 
   build:
     needs: release
-    if: needs.release.outputs.release-created == 'true'
+    if: needs.release.outputs.release_created == 'true'
     runs-on: windows-latest
     permissions:
       contents: write
     outputs:
-      asset-name: ${{ steps.package.outputs.asset_name }}
+      asset_name: ${{ steps.package.outputs.asset_name }}
 
     steps:
       - name: Validate release inputs
@@ -122,7 +122,7 @@ jobs:
       - name: Checkout exact release commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.release-sha }}
+          ref: ${{ needs.release.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Setup .NET
@@ -142,8 +142,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
 
           $workspace = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $workspacePrefix = $workspace.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
           $project = [System.IO.Path]::GetFullPath((Join-Path $workspace $env:PROJECT_PATH))
-          if (-not $project.StartsWith($workspace, [System.StringComparison]::OrdinalIgnoreCase)) {
+          if (-not $project.StartsWith($workspacePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw 'Resolved project path escapes the GitHub workspace.'
           }
           if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
@@ -214,7 +215,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.release_token || github.token }}
-          TAG_NAME: ${{ needs.release.outputs.tag-name }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
           ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
           ASSET_NAME: ${{ steps.package.outputs.asset_name }}
           CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
