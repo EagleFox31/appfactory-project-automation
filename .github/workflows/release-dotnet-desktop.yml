@@ -1,0 +1,225 @@
+name: AppFactory .NET desktop release
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Relative path to the desktop .csproj in the consumer repository.
+        required: true
+        type: string
+      product-name:
+        description: Safe product name used for release asset filenames.
+        required: true
+        type: string
+      runtime:
+        description: .NET runtime identifier to publish.
+        required: false
+        type: string
+        default: win-x64
+      dotnet-version:
+        description: .NET SDK version installed on the release runner.
+        required: false
+        type: string
+        default: 10.0.x
+      configuration:
+        description: MSBuild configuration used for dotnet publish.
+        required: false
+        type: string
+        default: Release
+      self-contained:
+        description: Publish the desktop application with its .NET runtime.
+        required: false
+        type: boolean
+        default: true
+      target-branch:
+        description: Branch maintained by Release Please.
+        required: false
+        type: string
+        default: main
+      release-as:
+        description: Optional one-time version override, for example 0.1.0 for the first release.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      release_token:
+        description: Optional token used instead of GITHUB_TOKEN so Release Please PRs can trigger CI.
+        required: false
+    outputs:
+      release-created:
+        description: Whether a GitHub Release was created.
+        value: ${{ jobs.release.outputs.release-created }}
+      tag-name:
+        description: Published Git tag.
+        value: ${{ jobs.release.outputs.tag-name }}
+      version:
+        description: Published semantic version.
+        value: ${{ jobs.release.outputs.version }}
+      asset-name:
+        description: Versioned ZIP asset uploaded when a release was created.
+        value: ${{ jobs.build.outputs.asset-name }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: $/.github/workflows/reusable-release.yml
+    with:
+      release-type: simple
+      target-branch: ${{ inputs.target-branch }}
+      path: .
+      include-v-in-tag: true
+      release-as: ${{ inputs.release-as }}
+    secrets:
+      release_token: ${{ secrets.release_token }}
+
+  build:
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    outputs:
+      asset-name: ${{ steps.package.outputs.asset_name }}
+
+    steps:
+      - name: Validate release inputs
+        shell: pwsh
+        env:
+          PROJECT_PATH: ${{ inputs.project-path }}
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          RUNTIME: ${{ inputs.runtime }}
+          CONFIGURATION: ${{ inputs.configuration }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:PRODUCT_NAME -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$') {
+            throw 'product-name must use only letters, numbers, dot, underscore or hyphen and be at most 80 characters.'
+          }
+
+          if ($env:RUNTIME -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+            throw 'runtime contains unsupported characters.'
+          }
+
+          if ($env:CONFIGURATION -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$') {
+            throw 'configuration contains unsupported characters.'
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:PROJECT_PATH) -or
+              [System.IO.Path]::IsPathRooted($env:PROJECT_PATH) -or
+              $env:PROJECT_PATH -match '(^|[\\/])\.\.([\\/]|$)' -or
+              -not $env:PROJECT_PATH.EndsWith('.csproj', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'project-path must be a relative .csproj path inside the consumer repository.'
+          }
+
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release-sha }}
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Publish deterministic Windows application
+        shell: pwsh
+        env:
+          PROJECT_PATH: ${{ inputs.project-path }}
+          RUNTIME: ${{ inputs.runtime }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SELF_CONTAINED: ${{ inputs.self-contained }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $workspace = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $project = [System.IO.Path]::GetFullPath((Join-Path $workspace $env:PROJECT_PATH))
+          if (-not $project.StartsWith($workspace, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Resolved project path escapes the GitHub workspace.'
+          }
+          if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
+            throw "Project file was not found: $env:PROJECT_PATH"
+          }
+
+          $publishDir = Join-Path $env:RUNNER_TEMP 'appfactory-publish'
+          if (Test-Path $publishDir) {
+            Remove-Item $publishDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $publishDir | Out-Null
+
+          $arguments = @(
+            'publish',
+            $project,
+            '--configuration', $env:CONFIGURATION,
+            '--runtime', $env:RUNTIME,
+            '--self-contained', $env:SELF_CONTAINED,
+            '--output', $publishDir,
+            '-p:ContinuousIntegrationBuild=true',
+            "-p:Version=$env:VERSION"
+          )
+
+          & dotnet @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Package release asset and checksum
+        id: package
+        shell: pwsh
+        env:
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          RUNTIME: ${{ inputs.runtime }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $publishDir = Join-Path $env:RUNNER_TEMP 'appfactory-publish'
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'appfactory-release'
+          if (Test-Path $artifactDir) {
+            Remove-Item $artifactDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $artifactDir | Out-Null
+
+          $assetName = "$env:PRODUCT_NAME-v$env:VERSION-$env:RUNTIME.zip"
+          $checksumName = "$env:PRODUCT_NAME-v$env:VERSION-$env:RUNTIME.sha256.txt"
+          $assetPath = Join-Path $artifactDir $assetName
+          $checksumPath = Join-Path $artifactDir $checksumName
+
+          Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $assetPath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+          "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          "artifact_dir=$artifactDir" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.product-name }}-${{ needs.release.outputs.version }}-${{ inputs.runtime }}
+          path: ${{ steps.package.outputs.artifact_dir }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.release_token || github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag-name }}
+          ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
+          ASSET_NAME: ${{ steps.package.outputs.asset_name }}
+          CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $asset = Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME
+          $checksum = Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME
+          gh release upload $env:TAG_NAME $asset $checksum --repo $env:GITHUB_REPOSITORY --clobber
