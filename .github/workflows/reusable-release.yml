@@ -38,24 +38,24 @@ on:
         description: Optional token used instead of GITHUB_TOKEN so release PRs can trigger normal CI.
         required: false
     outputs:
-      release-created:
+      release_created:
         description: Whether this run created a GitHub Release.
-        value: ${{ jobs.release.outputs.release-created }}
-      release-pr-created:
+        value: ${{ jobs.release.outputs.release_created }}
+      release_pr_created:
         description: Whether this run created or updated a Release PR.
-        value: ${{ jobs.release.outputs.release-pr-created }}
-      tag-name:
+        value: ${{ jobs.release.outputs.release_pr_created }}
+      tag_name:
         description: Tag created by Release Please when a release is published.
-        value: ${{ jobs.release.outputs.tag-name }}
+        value: ${{ jobs.release.outputs.tag_name }}
       version:
         description: Semantic version created by Release Please.
         value: ${{ jobs.release.outputs.version }}
-      release-sha:
+      release_sha:
         description: Exact commit SHA tagged by Release Please.
-        value: ${{ jobs.release.outputs.release-sha }}
-      release-url:
+        value: ${{ jobs.release.outputs.release_sha }}
+      release_url:
         description: GitHub Release URL when a release is published.
-        value: ${{ jobs.release.outputs.release-url }}
+        value: ${{ jobs.release.outputs.release_url }}
 
 permissions:
   contents: write
@@ -66,12 +66,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
-      release-pr-created: ${{ steps.release.outputs.prs_created }}
-      tag-name: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      release_pr_created: ${{ steps.release.outputs.prs_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
-      release-sha: ${{ steps.release.outputs.sha }}
-      release-url: ${{ steps.release.outputs.html_url }}
+      release_sha: ${{ steps.release.outputs.sha }}
+      release_url: ${{ steps.release.outputs.html_url }}
 
     steps:
       - name: Prepare or publish semantic release
