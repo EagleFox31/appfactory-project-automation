@@ -19,22 +19,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare or publish release
-        id: release
-        uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
+
+      - name: Repair a merged release whose GitHub Release is missing
+        env:
+          GH_TOKEN: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          manifest_version="$(jq -r '."." // empty' .release-please-manifest.json)"
+          if [[ ! "${manifest_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release manifest does not contain a valid root semantic version; skipping repair."
+            exit 0
+          fi
+
+          tag="v${manifest_version}"
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "${tag} already exists as a GitHub Release; no repair needed."
+            exit 0
+          fi
+
+          repair_sha=""
+          while IFS= read -r sha; do
+            candidate="$(git show "${sha}:.release-please-manifest.json" 2>/dev/null | jq -r '."." // empty' 2>/dev/null || true)"
+            [[ "${candidate}" == "${manifest_version}" ]] || continue
+
+            parent_version="$(git show "${sha}^:.release-please-manifest.json" 2>/dev/null | jq -r '."." // empty' 2>/dev/null || true)"
+            if [[ "${parent_version}" != "${manifest_version}" ]]; then
+              repair_sha="${sha}"
+              break
+            fi
+          done < <(git log --first-parent --format='%H' -- .release-please-manifest.json)
+
+          if [[ -z "${repair_sha}" ]]; then
+            echo "Unable to identify the first-parent commit that introduced ${manifest_version}; refusing to guess a release target." >&2
+            exit 1
+          fi
+
+          echo "Repairing missing ${tag} at ${repair_sha}."
+          gh release create "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${repair_sha}" \
+            --title "${tag}" \
+            --generate-notes
+
+      - name: Prepare or publish release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
       - name: Synchronize stable Action aliases
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.APPFACTORY_RELEASE_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
