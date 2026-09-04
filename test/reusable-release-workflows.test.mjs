@@ -30,6 +30,12 @@ test('generic release workflow exposes release identity outputs', () => {
   assert.match(reusableRelease, /release_sha:/);
 });
 
+test('Release Please v4 step does not receive removed action inputs', () => {
+  const releasePleaseStep = reusableRelease.split('uses: googleapis/release-please-action@v4')[1] ?? '';
+  assert.doesNotMatch(releasePleaseStep, /include-v-in-tag:/);
+  assert.doesNotMatch(dotnetRelease, /include-v-in-tag: true/);
+});
+
 test('dotnet release composes the release workflow from the same AppFactory commit', () => {
   assert.match(dotnetRelease, /uses: \$\/\.github\/workflows\/reusable-release\.yml/);
   assert.match(dotnetRelease, /if: needs\.release\.outputs\.release_created == 'true'/);
