@@ -1,49 +1,60 @@
 # AppFactory Project Automation
 
-Reusable GitHub Action for bootstrapping and synchronizing GitHub Projects v2 with repository Issues and linked pull requests.
+[![CI](https://github.com/EagleFox31/appfactory-project-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/EagleFox31/appfactory-project-automation/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/EagleFox31/appfactory-project-automation?display_name=tag)](https://github.com/EagleFox31/appfactory-project-automation/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/EagleFox31/appfactory-project-automation?style=flat)](https://github.com/EagleFox31/appfactory-project-automation/stargazers)
+[![GitHub Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-Available-blue?logo=github)](https://github.com/marketplace?query=AppFactory+Project+Automation)
 
-It centralizes the Project automation logic used by AppFactory products while keeping product-specific phases and overrides in each consuming repository.
+**Automate GitHub Projects, backlog management, issue metadata and pull request lifecycle with GitHub Actions.**
 
-## What it automates
+AppFactory Project Automation is a reusable GitHub Action that bootstraps a GitHub Project, imports the existing backlog and keeps Issues and linked pull requests synchronized as work moves from idea to done.
 
-- create the configured GitHub Project v2 when it does not exist;
-- optionally link the Project to the consuming repository;
-- create/reconcile the AppFactory Project fields and options;
-- create an `AppFactory Board` board view;
-- import existing open Issues into the Project backlog;
-- add newly opened/reopened Issues to `Backlog`;
-- map Issue title prefixes to work types;
-- apply Priority, Work type, Phase and Size metadata;
-- move draft-linked work to `In Progress`;
-- move ready pull requests to `Review`;
-- move merged/closed work to `Done`;
-- manually resync one Issue;
-- preserve repository-specific overrides through a local JSON config.
+It is built for teams and solo developers who want a repeatable project workflow without rebuilding fields, statuses, board views and automation rules for every repository.
 
-No Project IDs, field IDs or option IDs are hard-coded.
+> One reusable Action. Repository-specific phases and policies stay in the repository. No Project IDs, field IDs or option IDs are hard-coded.
 
-## Architecture
+## Why use it?
+
+Setting up a useful GitHub Project is easy once. Keeping the same structure across multiple repositories is the repetitive part.
+
+AppFactory Project Automation turns that setup into infrastructure:
+
+- bootstrap a Project and its fields from configuration;
+- import existing Issues into the backlog automatically;
+- keep Issue and pull-request lifecycle changes reflected on the board;
+- preserve repository-specific phases and overrides;
+- reconcile existing Projects without destroying custom values;
+- reuse the same automation engine across multiple product repositories.
+
+## Workflow at a glance
 
 ```text
-Consumer repository
-├── .github/project-config.json
-└── .github/workflows/project-automation.yml
-              │
-              ▼
-EagleFox31/appfactory-project-automation@v1
-              │
-              ├── optional Project bootstrap
-              ├── schema reconciliation
-              ├── backlog import
-              ├── event normalization
-              ├── GitHub GraphQL Projects v2
-              ├── Issue metadata resolution
-              └── lifecycle transitions
+Issue opened / reopened
+        │
+        ▼
+     Backlog
+        │
+        ▼
+      Ready
+        │
+        ▼
+  In Progress  ← draft-linked work
+        │
+        ▼
+      Review    ← ready pull request
+        │
+        ▼
+   Validation
+        │
+        ▼
+       Done     ← merged / closed work
 ```
 
-The consuming repository owns its product-specific Project policy. This Action owns the reusable execution engine.
+The built-in `appfactory-product` template provides this default lifecycle while allowing each consuming repository to define its own product phases.
 
-## Quick start with automatic bootstrap
+## Quick start
+
+### 1. Add the project configuration
 
 Create `.github/project-config.json`:
 
@@ -65,19 +76,94 @@ Create `.github/project-config.json`:
 }
 ```
 
-Then use the workflow from `examples/project-automation.yml` and create a repository Actions secret named `PROJECT_TOKEN` with Projects v2 access to the configured owner.
+### 2. Add the workflow
 
-Run the workflow manually once with `issue_number` left empty. The Action will:
+Use the workflow from `examples/project-automation.yml`, or start with:
 
-1. resolve the configured Project owner and repository;
-2. create the Project if it does not exist;
-3. link it to the repository when enabled;
-4. create/reconcile the AppFactory fields;
-5. create the board view;
-6. import all open Issues and place them in `Backlog`;
-7. apply any metadata that can be inferred from titles, overrides or embedded metadata.
+```yaml
+name: Project automation
 
-After bootstrap, normal Issue and pull-request events keep the board synchronized.
+on:
+  issues:
+    types: [opened, reopened, edited, closed]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, closed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Optional Issue to resync; leave empty to bootstrap"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: EagleFox31/appfactory-project-automation@v1
+        with:
+          token: ${{ secrets.PROJECT_TOKEN }}
+          config-path: .github/project-config.json
+          issue-number: ${{ inputs.issue_number }}
+```
+
+### 3. Add the token
+
+Create a repository Actions secret named `PROJECT_TOKEN` with GitHub Projects access to the configured owner.
+
+### 4. Bootstrap once
+
+Run the workflow manually with `issue_number` left empty.
+
+The Action will resolve the configured owner and repository, create or reconcile the Project, link it to the repository, create the configured fields and board view, import open Issues into `Backlog`, and apply metadata that can be inferred from titles, overrides or embedded Issue metadata.
+
+After bootstrap, normal Issue and pull-request events keep the Project synchronized.
+
+## What it automates
+
+- create the configured GitHub Project when it does not exist;
+- optionally link the Project to the consuming repository;
+- create/reconcile the AppFactory Project fields and options;
+- create an `AppFactory Board` board view;
+- import existing open Issues into the Project backlog;
+- add newly opened/reopened Issues to `Backlog`;
+- map Issue title prefixes to work types;
+- apply Priority, Work type, Phase and Size metadata;
+- move draft-linked work to `In Progress`;
+- move ready pull requests to `Review`;
+- move merged/closed work to `Done`;
+- manually resync one Issue;
+- preserve repository-specific overrides through a local JSON config.
+
+## Architecture
+
+```text
+Consumer repository
+├── .github/project-config.json
+└── .github/workflows/project-automation.yml
+              │
+              ▼
+EagleFox31/appfactory-project-automation@v1
+              │
+              ├── optional Project bootstrap
+              ├── schema reconciliation
+              ├── backlog import
+              ├── event normalization
+              ├── GitHub GraphQL Projects API
+              ├── Issue metadata resolution
+              └── lifecycle transitions
+```
+
+The consuming repository owns its product-specific Project policy. This Action owns the reusable execution engine.
 
 ## `appfactory-product` template
 
@@ -220,44 +306,6 @@ Without bootstrap enabled, a manual run still requires an Issue number, preservi
 - existing field options are preserved during reconciliation;
 - malformed manual inputs and incompatible field types fail before silently changing Project semantics.
 
-## Workflow example
-
-```yaml
-name: Project automation
-
-on:
-  issues:
-    types: [opened, reopened, edited, closed]
-  pull_request_target:
-    types: [opened, reopened, ready_for_review, closed]
-  workflow_dispatch:
-    inputs:
-      issue_number:
-        description: "Optional Issue to resync; leave empty to bootstrap"
-        required: false
-        type: string
-
-permissions:
-  contents: read
-  issues: read
-  pull-requests: read
-
-jobs:
-  sync-project:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - uses: EagleFox31/appfactory-project-automation@v1
-        with:
-          token: ${{ secrets.PROJECT_TOKEN }}
-          config-path: .github/project-config.json
-          issue-number: ${{ inputs.issue_number }}
-```
-
 ## Development
 
 The Action is zero-dependency and uses Node 24.
@@ -278,6 +326,10 @@ uses: EagleFox31/appfactory-project-automation@v1
 
 Breaking behavior changes require a new major version. `main` is development, not a stable integration target.
 
-## AppFactory
+## Built for reuse
 
-This Action is an AppFactory infrastructure brick: product repositories retain their domain-specific phases and metadata while Project creation, backlog setup and lifecycle automation are maintained once and reused everywhere.
+AppFactory Project Automation grew out of the automation used across AppFactory product repositories. Product repositories keep their domain-specific phases and metadata while Project creation, backlog setup and lifecycle automation are maintained once and reused everywhere.
+
+If this Action saves you setup time or helps keep your GitHub Projects consistent, consider **starring the repository**. It helps other developers discover the project.
+
+Found a bug or have an idea? Open an Issue and describe the workflow you are trying to automate.
