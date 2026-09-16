@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a new capability or improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the workflow problem first. AppFactory Project Automation should stay reusable rather than absorb repository-specific policy.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or GitHub Project problem are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behaviour
+      description: What should the Action do differently?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current workaround
+      description: How are you handling this today, if at all?
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Example configuration
+      description: Show what the consumer-facing configuration could look like, if relevant.
+      render: json
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is reusable across repositories rather than specific to one product backlog.
+          required: true
+        - label: I searched existing Issues for a similar request.
+          required: true
