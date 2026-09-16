@@ -23,7 +23,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 
 The three capabilities are independent. A repository can use Project automation, release automation, both, or neither.
 
-Repository Governance is the next AppFactory capability under active development. Its versioned policy, permission preflight and idempotent reconciliation core are documented in [Repository Governance architecture](docs/architecture/repository-governance.md); remote Ruleset mutation remains disabled until plan/apply orchestration is complete.
+Repository Governance is the next AppFactory capability under active development. Its versioned policy, permission preflight and explicit `plan`/`apply` orchestration are documented in [Repository Governance architecture](docs/architecture/repository-governance.md). Governance is off by default; `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset.
 
 ## Why use it?
 
