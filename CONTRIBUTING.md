@@ -4,6 +4,8 @@ Thanks for taking the time to contribute.
 
 AppFactory Project Automation is a zero-dependency GitHub Action for bootstrapping and synchronizing GitHub Projects. Contributions should keep the Action predictable, non-destructive and safe to run from repository automation.
 
+AppFactory platform changes follow the cross-project RAIDER standard. Use the [RAIDER review checklist](docs/engineering/raider-review-checklist.md), consult the [failure memory](docs/engineering/lessons-learned.md), and perform reuse-first ecosystem reconnaissance before implementing a non-trivial capability.
+
 ## Before opening a pull request
 
 - Search existing Issues and pull requests first.
@@ -36,6 +38,8 @@ Keep changes focused and reviewable. A pull request should:
 - preserve backwards compatibility for existing v1 consumer configuration unless the change is explicitly breaking;
 - update documentation when configuration or user-facing behaviour changes;
 - avoid hard-coded Project, field or option IDs.
+- document the Adopt / Adapt / Learn / Build decision for significant new infrastructure;
+- capture meaningful failures or near misses with a proportionate regression guardrail.
 
 Use Conventional Commit-style titles where practical (`feat:`, `fix:`, `docs:`, `refactor:`, etc.). Release Please uses those changes to build release notes and versions.
 

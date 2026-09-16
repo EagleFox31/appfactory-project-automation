@@ -23,6 +23,8 @@ Project automation is the main product and the Marketplace Action. This reposito
 
 The three capabilities are independent. A repository can use Project automation, release automation, both, or neither.
 
+Repository Governance is the next AppFactory capability under active development. Its versioned configuration and pure policy-normalization foundation are documented in [Repository Governance architecture](docs/architecture/repository-governance.md); remote Ruleset mutation remains disabled until plan/apply, preflight and reconciliation are complete.
+
 ## Why use it?
 
 Setting up a useful GitHub Project is easy once. Keeping the same structure across multiple repositories is the repetitive part.

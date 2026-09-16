@@ -1,3 +1,5 @@
+import { normalizeGovernanceConfig } from './governance/policy.mjs';
+
 export const APPFACTORY_PRODUCT_TEMPLATE = Object.freeze({
   metadataCommentKey: 'appfactory-project',
   fields: {
@@ -185,6 +187,13 @@ export function validateConfig(input) {
   if (input.project.bootstrap !== undefined && typeof input.project.bootstrap !== 'boolean') {
     throw new Error('project.bootstrap must be a boolean when provided.');
   }
+  if (input.repository !== undefined && (
+    !input.repository
+    || typeof input.repository !== 'object'
+    || Array.isArray(input.repository)
+  )) {
+    throw new Error('repository must be an object when provided.');
+  }
 
   const template = templateFor(input.project.template);
   const config = template
@@ -224,6 +233,11 @@ export function validateConfig(input) {
       throw new Error('bootstrap.phases must be an array when bootstrap is enabled.');
     }
   }
+
+  config.repository = {
+    ...(input.repository ?? {}),
+    governance: normalizeGovernanceConfig(input.repository?.governance)
+  };
 
   return config;
 }
