@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.2...v1.2.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* improve Marketplace metadata ([aca0952](https://github.com/EagleFox31/appfactory-project-automation/commit/aca0952b079abd1cd3c64c393560c524532d27c7))
+
 ## [1.2.2](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.1...v1.2.2) (2026-09-04)
 
 
