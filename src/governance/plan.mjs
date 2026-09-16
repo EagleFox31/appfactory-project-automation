@@ -4,6 +4,8 @@ import {
   rulesetPayloadFromPolicy,
   rulesetsEquivalent
 } from './ruleset.mjs';
+import { buildBrownfieldAdoptionReport } from './adoption.mjs';
+import { discoverRepositoryGovernanceState } from './discovery.mjs';
 
 const VIEW_FIELDS = Object.freeze([
   ['enforcement', 'Enforcement'],
@@ -112,7 +114,12 @@ function changesBetween(current, desired, action) {
   return changes;
 }
 
-export async function planRepositoryRuleset({ repositoryFullName, policy, client }) {
+export async function planRepositoryRuleset({
+  repositoryFullName,
+  policy,
+  client,
+  discovery: suppliedDiscovery
+}) {
   if (!policy?.enabled) {
     return {
       action: 'disabled',
@@ -122,6 +129,7 @@ export async function planRepositoryRuleset({ repositoryFullName, policy, client
       rulesetName: null,
       rulesetId: null,
       unrelatedRulesetCount: 0,
+      adoption: null,
       desired: null,
       changes: []
     };
@@ -129,9 +137,18 @@ export async function planRepositoryRuleset({ repositoryFullName, policy, client
   if (!client) throw new Error('A repository ruleset client is required.');
 
   const desired = rulesetPayloadFromPolicy(policy);
-  const rulesets = await client.listRepositoryRulesets(repositoryFullName);
+  const discovery = suppliedDiscovery ?? await discoverRepositoryGovernanceState({
+    repositoryFullName,
+    client
+  });
+  const rulesets = discovery.rulesets;
   const managed = findManagedRuleset(rulesets, policy, repositoryFullName);
   const unrelatedRulesetCount = rulesets.length - (managed ? 1 : 0);
+  const adoption = buildBrownfieldAdoptionReport({
+    policy,
+    discovery,
+    managedRuleset: managed
+  });
 
   if (!managed) {
     return {
@@ -142,6 +159,7 @@ export async function planRepositoryRuleset({ repositoryFullName, policy, client
       rulesetName: policy.rulesetName,
       rulesetId: null,
       unrelatedRulesetCount,
+      adoption,
       desired,
       changes: changesBetween(null, desired, 'create')
     };
@@ -157,6 +175,7 @@ export async function planRepositoryRuleset({ repositoryFullName, policy, client
       rulesetName: policy.rulesetName,
       rulesetId: managed.id,
       unrelatedRulesetCount,
+      adoption,
       desired,
       changes: []
     };
@@ -170,6 +189,7 @@ export async function planRepositoryRuleset({ repositoryFullName, policy, client
     rulesetName: policy.rulesetName,
     rulesetId: managed.id,
     unrelatedRulesetCount,
+    adoption,
     desired,
     changes: changesBetween(current, desired, 'update')
   };
@@ -191,8 +211,17 @@ export function formatRepositoryGovernancePlan(plan) {
     `Repository governance plan for ${plan.repositoryFullName}`,
     `Action: ${plan.action.toUpperCase()} ${plan.ownership} ruleset "${plan.rulesetName}"`,
     `Target: ${rulesetView(plan.desired).branchTarget}`,
+    `Default branch: ${plan.adoption.defaultBranch} preserved`,
+    `Classic branch protection: ${plan.adoption.classicBranchProtection.present ? 'present and preserved' : 'none detected'}`,
     `Unrelated rulesets: ${plan.unrelatedRulesetCount} preserved`
   ];
+
+  for (const finding of plan.adoption.findings) {
+    lines.push(`${finding.level === 'warning' ? '!' : 'i'} Brownfield: ${finding.message}`);
+  }
+  for (const ruleset of plan.adoption.unrelatedRulesets) {
+    lines.push(`i Preserved ruleset: "${ruleset.name}" (${ruleset.enforcement})`);
+  }
 
   if (plan.action === 'no-op') {
     lines.push('= No changes; the managed ruleset already matches the desired policy.');

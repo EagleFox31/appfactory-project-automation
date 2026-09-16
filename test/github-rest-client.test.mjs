@@ -36,6 +36,37 @@ test('REST client reads repository metadata through the injected transport', asy
   assert.equal(calls[0].options.method, 'GET');
 });
 
+test('REST client reads classic protection for the exact default branch', async () => {
+  const calls = [];
+  const client = createGitHubRestClient({
+    token: 'governance-token',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options });
+      return jsonResponse(200, {
+        required_pull_request_reviews: { required_approving_review_count: 1 }
+      });
+    }
+  });
+
+  const protection = await client.getBranchProtection('octo-org/product', 'release/current');
+
+  assert.equal(protection.required_pull_request_reviews.required_approving_review_count, 1);
+  assert.equal(
+    calls[0].url,
+    'https://api.github.com/repos/octo-org/product/branches/release%2Fcurrent/protection'
+  );
+  assert.equal(calls[0].options.method, 'GET');
+});
+
+test('REST client treats a missing classic protection rule as unprotected', async () => {
+  const client = createGitHubRestClient({
+    token: 'governance-token',
+    fetchImpl: async () => jsonResponse(404, { message: 'Branch not protected' })
+  });
+
+  assert.equal(await client.getBranchProtection('octo-org/product', 'main'), null);
+});
+
 test('REST client creates a repository ruleset through the injected transport', async () => {
   const calls = [];
   const client = createGitHubRestClient({

@@ -112,9 +112,25 @@ export function createGitHubRestClient({
     return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
   }
 
+  function branchProtectionPath(repositoryFullName, branchName) {
+    if (typeof branchName !== 'string' || !branchName.trim()) {
+      throw new Error('branchName must be a non-empty string.');
+    }
+    return `${repositoryPath(repositoryFullName)}/branches/${encodeURIComponent(branchName.trim())}/protection`;
+  }
+
   return Object.freeze({
     getRepository(repositoryFullName) {
       return request('GET', repositoryPath(repositoryFullName));
+    },
+
+    async getBranchProtection(repositoryFullName, branchName) {
+      try {
+        return await request('GET', branchProtectionPath(repositoryFullName, branchName));
+      } catch (error) {
+        if (error instanceof GitHubRestError && error.status === 404) return null;
+        throw error;
+      }
     },
 
     async listRepositoryRulesets(repositoryFullName) {

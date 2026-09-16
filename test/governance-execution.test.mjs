@@ -21,8 +21,9 @@ function managedRuleset(overrides = {}) {
   };
 }
 
-function clientFixture(initialRulesets = []) {
+function clientFixture(initialRulesets = [], { classicBranchProtection = null } = {}) {
   const state = initialRulesets.map((entry) => structuredClone(entry));
+  const classicState = structuredClone(classicBranchProtection);
   const calls = [];
   const writes = [];
   return {
@@ -34,8 +35,14 @@ function clientFixture(initialRulesets = []) {
       return {
         full_name: repositoryFullName,
         visibility: 'private',
+        default_branch: 'main',
         permissions: { admin: true }
       };
+    },
+    async getBranchProtection(_repositoryFullName, branchName) {
+      calls.push('get-branch-protection');
+      assert.equal(branchName, 'main');
+      return structuredClone(classicState);
     },
     async listRepositoryRulesets() {
       calls.push('list-rulesets');
@@ -109,7 +116,51 @@ test('plan mode describes creation and performs zero mutation', async () => {
   const output = formatRepositoryGovernanceExecution(execution);
   assert.match(output, /Action: CREATE AppFactory-managed ruleset/);
   assert.match(output, /default branch \(~DEFAULT_BRANCH\)/);
+  assert.match(output, /Default branch: main preserved/);
+  assert.match(output, /Classic branch protection: none detected/);
   assert.match(output, /Unrelated rulesets: 1 preserved/);
+  assert.match(output, /Preserved ruleset: "Manual policy"/);
+});
+
+test('brownfield plan reports layered classic protection without mutating it', async () => {
+  const classicProtection = {
+    required_status_checks: {
+      strict: true,
+      checks: [{ context: 'legacy-ci', app_id: null }]
+    },
+    required_pull_request_reviews: {
+      required_approving_review_count: 2,
+      dismiss_stale_reviews: true
+    },
+    required_linear_history: { enabled: true },
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false }
+  };
+  const client = clientFixture(
+    [{ id: 7, name: 'Manual security', enforcement: 'active', source_type: 'Repository' }],
+    { classicBranchProtection: classicProtection }
+  );
+
+  const execution = await executeRepositoryGovernance({
+    mode: 'plan',
+    repositoryFullName: REPOSITORY,
+    policy: POLICY,
+    governanceToken: 'dedicated-token',
+    clientFactory: () => client
+  });
+
+  assert.equal(execution.plan.action, 'create');
+  assert.equal(execution.plan.adoption.classicBranchProtection.present, true);
+  assert.deepEqual(client.writes, []);
+  assert.deepEqual(classicProtection.required_status_checks.checks, [
+    { context: 'legacy-ci', app_id: null }
+  ]);
+
+  const output = formatRepositoryGovernanceExecution(execution);
+  assert.match(output, /Classic branch protection: present and preserved/);
+  assert.match(output, /requires 2 approving review/);
+  assert.match(output, /legacy-ci/);
+  assert.match(output, /linear history/);
 });
 
 test('apply consumes the exact desired payload produced by its plan', async () => {
@@ -170,6 +221,37 @@ test('update plan shows drift while preserving unrelated rulesets', async () => 
   assert.equal(execution.plan.unrelatedRulesetCount, 1);
   assert.deepEqual(client.writes, []);
   assert.match(formatRepositoryGovernanceExecution(execution), /Enforcement: disabled -> active/);
+});
+
+test('re-enabling after drift updates only the AppFactory-owned ruleset', async () => {
+  const classicProtection = {
+    required_pull_request_reviews: { required_approving_review_count: 1 }
+  };
+  const unrelated = {
+    id: 9,
+    name: 'Security policy',
+    enforcement: 'active',
+    source_type: 'Repository',
+    source: REPOSITORY
+  };
+  const client = clientFixture([
+    managedRuleset({ enforcement: 'disabled' }),
+    unrelated
+  ], { classicBranchProtection: classicProtection });
+
+  const execution = await executeRepositoryGovernance({
+    mode: 'apply',
+    repositoryFullName: REPOSITORY,
+    policy: POLICY,
+    governanceToken: 'dedicated-token',
+    clientFactory: () => client
+  });
+
+  assert.deepEqual(execution.result, { action: 'update', changed: true, rulesetId: 42 });
+  assert.equal(client.writes.length, 1);
+  assert.equal(client.writes[0].action, 'update');
+  assert.deepEqual(client.state.find((ruleset) => ruleset.id === 9), unrelated);
+  assert.deepEqual(execution.preflight.discovery.classicBranchProtection, classicProtection);
 });
 
 test('disabled policy reports no changes without requesting a credential', async () => {

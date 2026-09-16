@@ -110,3 +110,38 @@ A dry-run guarantee applies to the whole command or workflow invocation, not mer
 **Derived principle / standard change**
 
 RAIDER plan modes must inventory and isolate every possible mutator reachable from the public entry point.
+
+### LESSON-2026-004 — Managed-state convergence is not brownfield safety
+
+- **Date:** 2026-09-16
+- **Category:** architecture
+- **Status:** prevention-added
+- **Related:** issue #21
+
+**Context**
+
+Repository Governance already reconciled one named AppFactory Ruleset and preserved every differently named Ruleset.
+
+**Failure / near miss**
+
+That ownership boundary prevented destructive writes, but the plan could still call a brownfield repository safe without inspecting classic protection on its real default branch. GitHub layers both mechanisms, so reviews, checks or locks outside the managed Ruleset could silently make the effective policy stricter than the plan appeared to describe.
+
+**Root cause**
+
+Write isolation was treated as sufficient evidence of adoption safety. Effective platform behavior depends on every protection layer, not only the object AppFactory owns.
+
+**Resolution**
+
+Preflight now discovers the actual default branch, repository-owned Rulesets and classic default-branch protection. The plan identifies preserved state and reports layered differences before apply. Only the AppFactory Ruleset remains writable.
+
+**Prevention**
+
+Fixtures cover greenfield, manually protected and previously AppFactory-managed repositories. Tests verify zero brownfield mutation during plan and in-place convergence after drift.
+
+**Generalized lesson**
+
+Safe brownfield automation requires both a strict write boundary and an inventory of external state that changes the effective outcome.
+
+**Derived principle / standard change**
+
+RAIDER retroactive features must report platform-native layering and conflicts before claiming that adoption is non-destructive.

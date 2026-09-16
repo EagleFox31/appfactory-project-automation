@@ -16,9 +16,11 @@ function preflightClient({
   repository = {
     full_name: REPOSITORY,
     visibility: 'private',
+    default_branch: 'main',
     permissions: { admin: true }
   },
-  rulesets = []
+  rulesets = [],
+  classicBranchProtection = null
 } = {}) {
   const calls = [];
   return {
@@ -30,6 +32,10 @@ function preflightClient({
     async listRepositoryRulesets(repositoryFullName) {
       calls.push({ operation: 'list', repositoryFullName });
       return structuredClone(rulesets);
+    },
+    async getBranchProtection(repositoryFullName, branchName) {
+      calls.push({ operation: 'get-protection', repositoryFullName, branchName });
+      return structuredClone(classicBranchProtection);
     },
     async createRepositoryRuleset() {
       calls.push({ operation: 'create' });
@@ -89,13 +95,17 @@ test('preflight verifies repository identity, admin capability and ruleset visib
   });
 
   assert.equal(observedToken, 'dedicated-secret');
-  assert.deepEqual(result, {
-    status: 'ready',
-    repositoryFullName: REPOSITORY,
-    visibility: 'private',
-    rulesetCount: 2
-  });
-  assert.deepEqual(client.calls.map((call) => call.operation), ['get', 'list']);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.repositoryFullName, REPOSITORY);
+  assert.equal(result.visibility, 'private');
+  assert.equal(result.defaultBranch, 'main');
+  assert.equal(result.rulesetCount, 2);
+  assert.equal(result.classicBranchProtection, false);
+  assert.deepEqual(result.discovery.rulesets, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(
+    client.calls.map((call) => call.operation),
+    ['get', 'list', 'get-protection']
+  );
   assert.doesNotMatch(JSON.stringify(result), /dedicated-secret/);
 });
 
@@ -104,6 +114,7 @@ test('insufficient repository role fails before any mutation', async () => {
     repository: {
       full_name: REPOSITORY,
       visibility: 'public',
+      default_branch: 'main',
       permissions: { admin: false, push: true }
     }
   });

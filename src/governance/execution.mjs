@@ -48,7 +48,12 @@ export async function executeRepositoryGovernance({
       return client;
     }
   });
-  const plan = await planRepositoryRuleset({ repositoryFullName, policy, client });
+  const plan = await planRepositoryRuleset({
+    repositoryFullName,
+    policy,
+    client,
+    discovery: preflight.discovery
+  });
 
   if (executionMode === 'plan') {
     return { mode: 'plan', status: 'planned', preflight, plan, result: null };
