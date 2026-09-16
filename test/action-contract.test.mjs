@@ -26,3 +26,11 @@ test('governance-only execution does not require the unrelated Project credentia
   assert.match(entrypoint, /if \(governanceMode === 'off' && !token\)/);
   assert.match(entrypoint, /requireProject: governanceMode === 'off'/);
 });
+
+test('entrypoint resolves hyphenated Action inputs through the shared adapter', () => {
+  assert.match(entrypoint, /readActionInput\('governance-token'\)/);
+  assert.match(entrypoint, /readActionInput\('governance-mode'\)/);
+  assert.match(entrypoint, /readActionInput\('config-path'\)/);
+  assert.match(entrypoint, /readActionInput\('issue-number'\)/);
+  assert.doesNotMatch(entrypoint, /process\.env\.INPUT_GOVERNANCE_MODE/);
+});
