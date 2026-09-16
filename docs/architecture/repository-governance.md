@@ -216,4 +216,6 @@ References:
 - **Engineering-grade:** policy is pure and separate from transport and reconciliation.
 - **Retroactive:** current user-managed protections remain outside AppFactory ownership.
 
+The executable consumer matrix, brownfield fixture and non-regression coverage map are documented in [RAIDER Contract Test Strategy](../testing/raider-contract.md).
+
 Implementation failures and near misses are recorded in [`../engineering/lessons-learned.md`](../engineering/lessons-learned.md).
