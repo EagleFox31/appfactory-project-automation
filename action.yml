@@ -4,8 +4,9 @@ author: EagleFox31
 
 inputs:
   token:
-    description: GitHub token with Projects v2 access and permission to create or update the configured Project when bootstrap is enabled.
-    required: true
+    description: GitHub token with Projects v2 access. Required for Project automation; unused by governance plan/apply runs.
+    required: false
+    default: ""
 
   governance-token:
     description: Optional dedicated credential used only when repository governance is enabled. Requires Administration write access to the consuming repository.

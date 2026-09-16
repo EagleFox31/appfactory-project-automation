@@ -145,3 +145,38 @@ Safe brownfield automation requires both a strict write boundary and an inventor
 **Derived principle / standard change**
 
 RAIDER retroactive features must report platform-native layering and conflicts before claiming that adoption is non-destructive.
+
+### LESSON-2026-005 — A separate execution path needs a separate minimum contract
+
+- **Date:** 2026-09-16
+- **Category:** usability
+- **Status:** prevention-added
+- **Related:** issue #23
+
+**Context**
+
+Repository Governance and Project automation already used separate credentials and mutually exclusive runtime paths.
+
+**Failure / near miss**
+
+The public entry point still required a Project token and complete Project configuration before a governance-only `plan` or `apply`, even though that path never used either dependency. A beginner guide would therefore have documented fake prerequisites or produced an example that failed validation.
+
+**Root cause**
+
+Authentication and execution were separated, but input validation still enforced the original product's global minimum contract before selecting the capability being run.
+
+**Resolution**
+
+Project mode retains its existing required token and configuration. Governance `plan`/`apply` accepts a minimal `repository.governance` config and requires only the dedicated governance credential.
+
+**Prevention**
+
+Tests execute the published beginner JSON and workflow contracts, assert that Project mode still requires its credential, and assert that governance-only mode does not.
+
+**Generalized lesson**
+
+When one entry point hosts independent capabilities, validate only the prerequisites reachable from the selected execution path.
+
+**Derived principle / standard change**
+
+RAIDER reusable actions must test capability-specific minimum inputs; documentation must not compensate for accidental cross-capability coupling.

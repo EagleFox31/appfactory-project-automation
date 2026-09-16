@@ -49,7 +49,7 @@ This separation keeps future PAT, GitHub App or other authentication mechanisms 
 
 Project automation and repository governance have separate credentials:
 
-- `token` remains the existing Project-capable credential and is unchanged for current consumers;
+- `token` remains the existing Project-capable credential and is required only when `governance-mode` is `off` and Project automation runs;
 - `governance-token` is optional while governance is omitted or disabled;
 - once governance is enabled, `governance-token` is required and never falls back to the Project token;
 - the governance credential must select the target repository and grant repository **Administration: write** permission.
@@ -63,9 +63,11 @@ Example consumer mapping:
 ```yaml
 - uses: EagleFox31/appfactory-project-automation@v1
   with:
-    token: ${{ secrets.PROJECT_TOKEN }}
     governance-token: ${{ secrets.APPFACTORY_GOVERNANCE_TOKEN }}
+    governance-mode: plan
 ```
+
+Consumers that also run Project automation continue to pass `token` in their separate Project workflow. Governance never falls back to that credential.
 
 For a user-owned repository, the token owner must have admin access to that repository. For an organization-owned repository, the token owner must have an admin-capable organization/repository role, the organization must approve the credential when its policy requires approval, and the repository must be selected for the fine-grained token.
 
@@ -83,7 +85,6 @@ The plan names the target repository, the AppFactory-managed Ruleset, the symbol
 ```yaml
 - uses: EagleFox31/appfactory-project-automation@v1
   with:
-    token: ${{ secrets.PROJECT_TOKEN }}
     governance-token: ${{ secrets.APPFACTORY_GOVERNANCE_TOKEN }}
     governance-mode: ${{ inputs.governance_mode }}
 ```
@@ -92,7 +93,7 @@ A safe operating sequence is: run `plan`, review the output, then run `apply`. A
 
 ## Configuration contract
 
-Governance is opt-in. Omitting the section, or setting `enabled` to `false`, normalizes to a disabled no-op and preserves existing consumers.
+Governance is opt-in. Omitting the section, or setting `enabled` to `false`, normalizes to a disabled no-op and preserves existing consumers. In `plan` or `apply` mode, a governance-only config may contain only the `repository.governance` object. Project fields and the Project credential remain mandatory when `governance-mode` is `off` and the existing Project automation path runs.
 
 ```json
 {

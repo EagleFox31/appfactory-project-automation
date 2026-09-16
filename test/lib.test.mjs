@@ -88,6 +88,22 @@ test('validateConfig keeps legacy explicit configs working', () => {
   }));
 });
 
+test('governance-only config does not require unrelated Project fields', () => {
+  const config = validateConfig({
+    repository: {
+      governance: { enabled: true, preset: 'solo' }
+    }
+  }, { requireProject: false });
+
+  assert.equal(config.project, undefined);
+  assert.equal(config.repository.governance.enabled, true);
+  assert.equal(config.repository.governance.preset, 'solo');
+  assert.throws(
+    () => validateConfig({ repository: { governance: { enabled: true } } }),
+    /project\.owner is required/
+  );
+});
+
 test('appfactory-product template hydrates a minimal bootstrap config', () => {
   const config = validateConfig({
     project: {
