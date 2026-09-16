@@ -1,0 +1,13 @@
+{
+  "project": {
+    "owner": "legacy-owner",
+    "title": "Legacy Product Board"
+  },
+  "fields": {
+    "status": "Status"
+  },
+  "statusTransitions": {
+    "issueOpened": "Backlog",
+    "issueClosed": "Done"
+  }
+}

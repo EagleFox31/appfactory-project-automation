@@ -1,0 +1,30 @@
+[
+  {
+    "name": "personal-main-no-ci",
+    "repositoryFullName": "octo-user/ledger",
+    "ownerType": "User",
+    "defaultBranch": "main",
+    "requiredStatusChecks": []
+  },
+  {
+    "name": "organization-master-custom-ci",
+    "repositoryFullName": "acme-platform/api",
+    "ownerType": "Organization",
+    "defaultBranch": "master",
+    "requiredStatusChecks": ["quality / verify"]
+  },
+  {
+    "name": "organization-trunk-multiple-ci",
+    "repositoryFullName": "northstar/tools",
+    "ownerType": "Organization",
+    "defaultBranch": "trunk",
+    "requiredStatusChecks": ["build-windows", "quality / verify"]
+  },
+  {
+    "name": "personal-arbitrary-branch",
+    "repositoryFullName": "solo-maker/desktop",
+    "ownerType": "User",
+    "defaultBranch": "stable/current",
+    "requiredStatusChecks": ["package (win-x64)"]
+  }
+]
