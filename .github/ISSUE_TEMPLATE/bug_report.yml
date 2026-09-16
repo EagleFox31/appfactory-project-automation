@@ -1,0 +1,70 @@
+name: Bug report
+description: Report reproducible incorrect behaviour in AppFactory Project Automation
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please remove secrets, tokens and private Project data from anything you share.
+
+  - type: input
+    id: version
+    attributes:
+      label: Action version
+      description: Which tag or commit are you using?
+      placeholder: v1 / v1.2.3 / commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: trigger
+    attributes:
+      label: Trigger
+      options:
+        - workflow_dispatch bootstrap
+        - workflow_dispatch issue resync
+        - issues opened/reopened/edited/closed
+        - pull_request_target opened/reopened/ready_for_review/closed
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect the Action to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead? Include a sanitized error excerpt when useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: Paste the smallest sanitized project-config/workflow excerpt that reproduces the problem.
+      render: yaml
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the shortest sequence that reproduces the issue.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive information
+      options:
+        - label: I removed tokens, secrets, private IDs and confidential data from this report.
+          required: true
