@@ -92,6 +92,15 @@ test('policy projects to a symbolic default-branch GitHub ruleset payload', () =
   ]);
 });
 
+test('solo preset without CI does not invent a required status check', () => {
+  const payload = rulesetPayloadFromPolicy(soloPolicy());
+
+  assert.equal(
+    payload.rules.some((rule) => rule.type === 'required_status_checks'),
+    false
+  );
+});
+
 test('first reconcile creates once and the second reconcile is a no-op', async () => {
   const policy = soloPolicy();
   const client = inMemoryClient();
@@ -127,6 +136,37 @@ test('managed policy drift causes one minimal update without recreation', async 
   assert.deepEqual(result, { action: 'update', changed: true, rulesetId: 42 });
   assert.deepEqual(client.writes, [{ action: 'update', id: 42 }]);
   assert.equal(client.state[0].enforcement, 'active');
+});
+
+test('adding and removing configured checks updates the managed ruleset in place', async () => {
+  const withoutChecks = soloPolicy();
+  const withChecks = soloPolicy({
+    requiredStatusChecks: ['verify / Linux', 'security-scan']
+  });
+  const client = inMemoryClient([existingManagedRuleset(withoutChecks)]);
+
+  const added = await reconcileRepositoryRuleset({
+    repositoryFullName: REPOSITORY,
+    policy: withChecks,
+    client
+  });
+  const removed = await reconcileRepositoryRuleset({
+    repositoryFullName: REPOSITORY,
+    policy: withoutChecks,
+    client
+  });
+
+  assert.deepEqual(added, { action: 'update', changed: true, rulesetId: 42 });
+  assert.deepEqual(removed, { action: 'update', changed: true, rulesetId: 42 });
+  assert.deepEqual(client.writes, [
+    { action: 'update', id: 42 },
+    { action: 'update', id: 42 }
+  ]);
+  assert.equal(client.state.length, 1);
+  assert.equal(
+    client.state[0].rules.some((rule) => rule.type === 'required_status_checks'),
+    false
+  );
 });
 
 test('unrelated repository rulesets remain untouched', async () => {

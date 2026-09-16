@@ -137,6 +137,29 @@ Supported pull-request overrides are:
 
 Unknown properties and unsafe values fail validation before any remote operation. Status-check names are trimmed, deduplicated and sorted into stable canonical order. AppFactory never invents a CI check name.
 
+### Required status checks
+
+Required checks are entirely consumer-defined. The `solo` preset defaults to an empty `requiredStatusChecks` array, so repositories without CI remain governable and AppFactory does not add a `required_status_checks` rule.
+
+Each entry must be the exact check context reported on a commit. Do not use the workflow filename or guess a generic name such as `CI` or `test`. To discover the contexts already produced by a repository:
+
+1. Run the relevant workflow on a pull request at least once.
+2. Open the pull request's **Checks** tab and note the exact check-run names.
+3. When verification through the API is useful, replace `OWNER`, `REPO` and `SHA` below and inspect both Checks and legacy commit-status contexts:
+
+   ```bash
+   gh api repos/OWNER/REPO/commits/SHA/check-runs \
+     --jq '.check_runs[].name'
+   gh api repos/OWNER/REPO/commits/SHA/status \
+     --jq '.statuses[].context'
+   ```
+
+4. Copy only the contexts that must block merging into `requiredStatusChecks`, then run governance in `plan` mode before applying it.
+
+Check contexts are case-sensitive operational identifiers. If a workflow job is renamed, update the consumer configuration before applying governance again; requiring a context that no workflow produces can leave pull requests waiting indefinitely. Adding or removing contexts updates the existing AppFactory-managed Ruleset in place. Reordering entries or repeating the same entry produces no drift because normalization trims, deduplicates and sorts the list.
+
+V1 deliberately requires explicit configuration instead of automatic discovery. This keeps the engine independent of CI provider, workflow language and repository stack while leaving assisted discovery as a future enhancement.
+
 ## Managed-state boundary
 
 AppFactory will own only the repository ruleset whose configured stable name matches the normalized policy. It must not delete or rewrite unrelated rulesets or classic branch-protection settings. Existing protections layer with AppFactory governance according to GitHub's ruleset behavior.

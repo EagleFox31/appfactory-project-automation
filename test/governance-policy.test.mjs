@@ -68,6 +68,23 @@ test('expert overrides refine solo without copying the policy', () => {
   assert.deepEqual(policy.target.include, [DEFAULT_BRANCH_REF]);
 });
 
+test('status-check contexts are consumer-defined, trimmed, deduplicated and deterministic', () => {
+  const policy = normalizeGovernanceConfig({
+    enabled: true,
+    preset: 'solo',
+    requiredStatusChecks: [
+      'verify / Windows package',
+      ' quality-gate ',
+      'verify / Windows package'
+    ]
+  });
+
+  assert.deepEqual(policy.requiredStatusChecks, [
+    'quality-gate',
+    'verify / Windows package'
+  ]);
+});
+
 test('disabled governance remains a no-op but still rejects malformed dormant policy', () => {
   assert.deepEqual(normalizeGovernanceConfig({
     enabled: false,
@@ -99,6 +116,10 @@ test('governance validation rejects unknown and unsafe values', () => {
   assert.throws(
     () => normalizeGovernanceConfig({ enabled: true, requiredStatusChecks: [''] }),
     /cannot be empty/
+  );
+  assert.throws(
+    () => normalizeGovernanceConfig({ enabled: true, requiredStatusChecks: ['valid', null] }),
+    /requiredStatusChecks\[1\] must be a string/
   );
   assert.throws(
     () => normalizeGovernanceConfig({
