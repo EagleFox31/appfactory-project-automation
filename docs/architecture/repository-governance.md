@@ -4,7 +4,7 @@ Repository Governance extends AppFactory with declarative, convergent protection
 
 ## Status
 
-The configuration and policy-normalization contract is implemented first. Remote GitHub Ruleset discovery and mutation remain disabled until the transport, reconciliation, permission-preflight and plan/apply layers are complete and tested.
+The configuration, policy-normalization, GitHub REST transport and idempotent reconciliation core are implemented as independent modules. Remote mutation remains disabled in the public Action entry point until permission preflight and plan/apply orchestration are complete and tested.
 
 ## Module boundaries
 
@@ -30,6 +30,15 @@ GitHub REST transport (injected)
 - **Planning/reconciliation** compares desired and observed state and selects `create`, `update` or `no-op`. It must be testable with fixtures.
 - **Transport** owns GitHub REST request/response details and authentication. It must not decide policy.
 - **Orchestration** runs preflight before mutation and keeps `plan` and `apply` on the same desired-state calculation.
+
+Current modules:
+
+- `src/governance/policy.mjs` — consumer config validation and canonical policy;
+- `src/governance/ruleset.mjs` — policy-to-GitHub projection, canonical comparison and ownership lookup;
+- `src/governance/reconcile.mjs` — create/update/no-op orchestration against an injected client;
+- `src/github/rest-client.mjs` — paginated GitHub Rulesets REST transport.
+
+The transport pins GitHub REST API version `2026-03-10`, injects authentication and `fetch`, paginates repository rulesets, and returns actionable HTTP errors without including token material.
 
 This separation keeps future PAT, GitHub App or other authentication mechanisms replaceable without changing governance policy.
 
@@ -83,6 +92,8 @@ Unknown properties and unsafe values fail validation before any remote operation
 ## Managed-state boundary
 
 AppFactory will own only the repository ruleset whose configured stable name matches the normalized policy. It must not delete or rewrite unrelated rulesets or classic branch-protection settings. Existing protections layer with AppFactory governance according to GitHub's ruleset behavior.
+
+The client requests repository-level branch rulesets with `includes_parents=false`. Reconciliation stops before mutation if more than one repository ruleset has the managed name, because guessing ownership could overwrite the wrong policy. A create response lost after GitHub accepts the request is safe to retry: the next inspection resolves the newly created ruleset by stable name and converges without a duplicate.
 
 Disabling governance means AppFactory stops reconciling its policy. Destructive cleanup is not part of the V1 contract.
 
