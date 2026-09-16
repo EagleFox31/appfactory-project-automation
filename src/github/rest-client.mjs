@@ -99,7 +99,7 @@ export function createGitHubRestClient({
 
   function rulesetsPath(repositoryFullName, rulesetId) {
     const { owner, repository } = parseRepositoryFullName(repositoryFullName);
-    const root = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/rulesets`;
+    const root = `${repositoryPath(repositoryFullName)}/rulesets`;
     if (rulesetId === undefined) return root;
     if (!Number.isSafeInteger(rulesetId) || rulesetId <= 0) {
       throw new Error(`rulesetId must be a positive safe integer, got: ${rulesetId}.`);
@@ -107,7 +107,16 @@ export function createGitHubRestClient({
     return `${root}/${rulesetId}`;
   }
 
+  function repositoryPath(repositoryFullName) {
+    const { owner, repository } = parseRepositoryFullName(repositoryFullName);
+    return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
+  }
+
   return Object.freeze({
+    getRepository(repositoryFullName) {
+      return request('GET', repositoryPath(repositoryFullName));
+    },
+
     async listRepositoryRulesets(repositoryFullName) {
       const result = [];
       for (let page = 1; page <= 100; page += 1) {

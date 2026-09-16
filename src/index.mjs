@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { preflightRepositoryGovernance } from './governance/preflight.mjs';
 import {
   bootstrapFieldDefinitions,
   isBootstrapEnabled,
@@ -13,6 +14,7 @@ import {
 } from './lib.mjs';
 
 const token = process.env.INPUT_TOKEN || process.env.PROJECT_TOKEN;
+const governanceToken = process.env.INPUT_GOVERNANCE_TOKEN;
 const configPath = path.resolve(process.env.INPUT_CONFIG_PATH || '.github/project-config.json');
 const manualIssueNumber = parseIssueNumber(process.env.INPUT_ISSUE_NUMBER || process.env.MANUAL_ISSUE_NUMBER);
 const repositoryFullName = process.env.GITHUB_REPOSITORY;
@@ -29,6 +31,18 @@ const event = eventPath && fs.existsSync(eventPath)
   ? JSON.parse(fs.readFileSync(eventPath, 'utf8'))
   : {};
 const [repositoryOwner, repositoryName] = repositoryFullName.split('/');
+
+const governancePreflight = await preflightRepositoryGovernance({
+  repositoryFullName,
+  policy: config.repository.governance,
+  governanceToken
+});
+if (governancePreflight.status === 'ready') {
+  console.log(
+    `Repository governance preflight passed for ${governancePreflight.repositoryFullName} ` +
+    `(${governancePreflight.visibility}).`
+  );
+}
 
 async function graphql(query, variables = {}) {
   const response = await fetch('https://api.github.com/graphql', {
