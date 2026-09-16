@@ -9,9 +9,19 @@
 
 AppFactory Project Automation is a reusable GitHub Action that bootstraps a GitHub Project, imports the existing backlog and keeps Issues and linked pull requests synchronized as work moves from idea to done.
 
-It is built for teams and solo developers who want a repeatable project workflow without rebuilding fields, statuses, board views and automation rules for every repository.
+Project automation is the main product and the Marketplace Action. This repository also hosts reusable release workflows used by AppFactory product repositories so semantic versioning, Release Please and repeatable release packaging do not have to be rebuilt in every codebase.
 
-> One reusable Action. Repository-specific phases and policies stay in the repository. No Project IDs, field IDs or option IDs are hard-coded.
+> One reusable automation layer. Repository-specific phases, policies and product build details stay in the consuming repository.
+
+## What lives in this repository
+
+| Capability | Entry point | Purpose |
+| --- | --- | --- |
+| **GitHub Project automation** | `EagleFox31/appfactory-project-automation@v1` | Bootstrap/reconcile Projects, import backlog, apply metadata and synchronize Issue/PR lifecycle |
+| **Standard product releases** | `.github/workflows/reusable-release.yml@v1` | Release Please, semantic versioning, tags and GitHub Releases |
+| **.NET desktop releases** | `.github/workflows/release-dotnet-desktop.yml@v1` | Release Please + deterministic `dotnet publish` + versioned ZIP + SHA-256 checksum |
+
+The three capabilities are independent. A repository can use Project automation, release automation, both, or neither.
 
 ## Why use it?
 
@@ -52,7 +62,7 @@ Issue opened / reopened
 
 The built-in `appfactory-product` template provides this default lifecycle while allowing each consuming repository to define its own product phases.
 
-## Quick start
+## Project automation quick start
 
 ### 1. Add the project configuration
 
@@ -78,7 +88,7 @@ Create `.github/project-config.json`:
 
 ### 2. Add the workflow
 
-Use the workflow from `examples/project-automation.yml`, or start with:
+Use the workflow from [`examples/project-automation.yml`](examples/project-automation.yml), or start with:
 
 ```yaml
 name: Project automation
@@ -128,7 +138,7 @@ The Action will resolve the configured owner and repository, create or reconcile
 
 After bootstrap, normal Issue and pull-request events keep the Project synchronized.
 
-## What it automates
+## What Project automation handles
 
 - create the configured GitHub Project when it does not exist;
 - optionally link the Project to the consuming repository;
@@ -144,7 +154,7 @@ After bootstrap, normal Issue and pull-request events keep the Project synchroni
 - manually resync one Issue;
 - preserve repository-specific overrides through a local JSON config.
 
-## Architecture
+## Project automation architecture
 
 ```text
 Consumer repository
@@ -164,6 +174,54 @@ EagleFox31/appfactory-project-automation@v1
 ```
 
 The consuming repository owns its product-specific Project policy. This Action owns the reusable execution engine.
+
+## Reusable release automation
+
+Project automation and release automation are deliberately separate. The Marketplace Action manages GitHub Projects; the reusable workflows under `.github/workflows/` manage product releases.
+
+### Standard semantic releases
+
+Use [`reusable-release.yml`](.github/workflows/reusable-release.yml) when a product needs shared Release Please orchestration without product-specific packaging.
+
+It provides:
+
+- Conventional Commit-driven semantic versioning;
+- Release Please release PRs;
+- `vX.Y.Z` tags;
+- GitHub Releases;
+- an optional one-time `release-as` override for initial or corrective versioning.
+
+A consuming repository calls it as a reusable workflow:
+
+```yaml
+jobs:
+  release:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-release.yml@v1
+    with:
+      release-type: simple
+      target-branch: main
+```
+
+See [`examples/product-release.yml`](examples/product-release.yml) for a complete caller workflow.
+
+### .NET desktop releases
+
+Use [`release-dotnet-desktop.yml`](.github/workflows/release-dotnet-desktop.yml) for a publishable .NET desktop product such as Avalonia, WPF or WinUI.
+
+When Release Please creates a release, the workflow checks out the exact tagged commit, runs `dotnet publish`, packages a versioned ZIP, generates a SHA-256 checksum, uploads the files as an Actions artifact and attaches them to the GitHub Release.
+
+```yaml
+jobs:
+  release:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/release-dotnet-desktop.yml@v1
+    with:
+      project-path: src/MyProduct.Desktop/MyProduct.Desktop.csproj
+      product-name: MyProduct
+      runtime: win-x64
+      dotnet-version: 10.0.x
+```
+
+See [`examples/dotnet-desktop-release.yml`](examples/dotnet-desktop-release.yml) and [`docs/product-release-automation.md`](docs/product-release-automation.md) for the complete setup, token behavior and supported inputs.
 
 ## `appfactory-product` template
 
@@ -297,6 +355,8 @@ Without bootstrap enabled, a manual run still requires an Issue number, preservi
 
 ## Security model
 
+For Project automation:
+
 - the Action never executes code from a pull request;
 - consumers using `pull_request_target` must checkout the trusted default branch rather than untrusted PR code;
 - the Project token is passed explicitly as an Action input and is never printed;
@@ -306,9 +366,13 @@ Without bootstrap enabled, a manual run still requires an Issue number, preservi
 - existing field options are preserved during reconciliation;
 - malformed manual inputs and incompatible field types fail before silently changing Project semantics.
 
+For reusable release workflows, product-specific paths and names are validated before build steps run, and the .NET workflow resolves the consumer-provided project path inside the checked-out workspace before publishing.
+
+See [`SECURITY.md`](SECURITY.md) for vulnerability reporting.
+
 ## Development
 
-The Action is zero-dependency and uses Node 24.
+The Project Action is zero-dependency and uses Node 24.
 
 ```bash
 npm test
@@ -316,20 +380,28 @@ npm test
 
 Tests cover manual input normalization, metadata parsing and precedence, title mapping, config compatibility, AppFactory template hydration, bootstrap field generation, option reconciliation and pull-request lifecycle transitions.
 
+Release workflow behavior is documented separately in [`docs/product-release-automation.md`](docs/product-release-automation.md) and [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Versioning
 
-Consumers should pin to a major release:
+Consumers should pin both the Marketplace Action and reusable workflows to a major release:
 
 ```yaml
 uses: EagleFox31/appfactory-project-automation@v1
+```
+
+```yaml
+uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-release.yml@v1
 ```
 
 Breaking behavior changes require a new major version. `main` is development, not a stable integration target.
 
 ## Built for reuse
 
-AppFactory Project Automation grew out of the automation used across AppFactory product repositories. Product repositories keep their domain-specific phases and metadata while Project creation, backlog setup and lifecycle automation are maintained once and reused everywhere.
+AppFactory Project Automation grew out of automation used across AppFactory product repositories. The repository now centralizes two pieces that are easy to duplicate badly: product workflow management and release plumbing.
 
-If this Action saves you setup time or helps keep your GitHub Projects consistent, consider **starring the repository**. It helps other developers discover the project.
+Consumer repositories keep their domain-specific phases, metadata, build configuration and product code. AppFactory keeps the reusable Project engine and release workflows in one maintained place.
+
+If this saves you setup time or helps keep your GitHub workflows consistent, consider **starring the repository**. It helps other developers discover the project.
 
 Found a bug or have an idea? Open an Issue and describe the workflow you are trying to automate.
