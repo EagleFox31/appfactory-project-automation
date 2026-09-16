@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readActionInput } from './action-inputs.mjs';
 import {
   executeRepositoryGovernance,
   formatRepositoryGovernanceExecution,
@@ -17,11 +18,11 @@ import {
   validateConfig
 } from './lib.mjs';
 
-const token = process.env.INPUT_TOKEN || process.env.PROJECT_TOKEN;
-const governanceToken = process.env.INPUT_GOVERNANCE_TOKEN;
-const governanceMode = normalizeGovernanceMode(process.env.INPUT_GOVERNANCE_MODE);
-const configPath = path.resolve(process.env.INPUT_CONFIG_PATH || '.github/project-config.json');
-const manualIssueNumber = parseIssueNumber(process.env.INPUT_ISSUE_NUMBER || process.env.MANUAL_ISSUE_NUMBER);
+const token = readActionInput('token') || process.env.PROJECT_TOKEN;
+const governanceToken = readActionInput('governance-token');
+const governanceMode = normalizeGovernanceMode(readActionInput('governance-mode'));
+const configPath = path.resolve(readActionInput('config-path') || '.github/project-config.json');
+const manualIssueNumber = parseIssueNumber(readActionInput('issue-number') || process.env.MANUAL_ISSUE_NUMBER);
 const repositoryFullName = process.env.GITHUB_REPOSITORY;
 const rawEventName = process.env.GITHUB_EVENT_NAME;
 const eventName = rawEventName === 'pull_request_target' ? 'pull_request' : rawEventName;
