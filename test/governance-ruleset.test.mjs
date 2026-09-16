@@ -24,6 +24,16 @@ function inMemoryClient(initialRulesets = [], { loseFirstCreateResponse = false 
   return {
     state,
     writes,
+    async getRepository(repositoryFullName) {
+      return {
+        full_name: repositoryFullName,
+        visibility: 'private',
+        default_branch: 'main'
+      };
+    },
+    async getBranchProtection() {
+      return null;
+    },
     async listRepositoryRulesets() {
       return state.map(({ id, name, source_type, source, enforcement }) => ({
         id,

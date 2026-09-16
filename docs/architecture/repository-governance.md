@@ -168,6 +168,29 @@ The client requests repository-level branch rulesets with `includes_parents=fals
 
 Disabling governance means AppFactory stops reconciling its policy. Destructive cleanup is not part of the V1 contract.
 
+## Brownfield adoption contract
+
+Governance does not assume an empty repository. Before calculating a plan, AppFactory reads the repository's actual default branch, repository-owned branch Rulesets and classic protection for that default branch. A missing classic-protection resource is treated as an unprotected branch; other API failures stop execution before a write.
+
+The discovered state is classified into three ownership zones:
+
+- the Ruleset with the configured AppFactory name is managed and may be created or updated;
+- every other repository Ruleset is named in the plan and preserved;
+- classic branch protection is read-only to AppFactory V1 and is always preserved.
+
+GitHub aggregates applicable Rulesets and classic branch protection. When the classic layer disagrees with AppFactory on approving reviews, required checks, force pushes or deletion, the plan reports the difference and states that the more restrictive effective policy wins. It also reports manual-only requirements such as signed commits, linear history, branch locks, push restrictions and administrator enforcement. These findings are diagnostics, not permission to rewrite the manual layer.
+
+Brownfield adoption never renames or recreates the default branch, changes repository settings, edits workflows, or mutates open pull requests. Newly active GitHub protections can still affect whether an already-open pull request is mergeable, so existing repositories should always run `plan` and review the layered findings before `apply`.
+
+Conflicts AppFactory will not reconcile automatically in V1 include:
+
+- multiple repository Rulesets sharing the configured managed name — execution stops because ownership is ambiguous;
+- stricter classic or unrelated Ruleset requirements — they remain effective and must be changed manually at their source if unwanted;
+- classic required checks that no current workflow produces — AppFactory reports the contexts but does not remove them;
+- organization-level Rulesets — they remain outside repository-owned state and continue to layer according to GitHub.
+
+Re-enabling governance after manual drift updates only the existing AppFactory Ruleset by ID and preserves all other discovered state. Repeated adoption converges to `no-op`. Setting governance to disabled performs no discovery or cleanup: AppFactory simply stops managing future state, and every existing protection remains in GitHub.
+
 ## Reuse-first decision
 
 The ecosystem reconnaissance for V1 produced this decision:
@@ -182,6 +205,7 @@ References:
 - [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 - [Creating rulesets for a repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)
 - [Repository rules REST API](https://docs.github.com/en/rest/repos/rules)
+- [Protected branches REST API](https://docs.github.com/en/rest/branches/branch-protection)
 
 ## RAIDER verification
 

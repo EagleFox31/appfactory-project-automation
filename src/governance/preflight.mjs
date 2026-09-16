@@ -1,4 +1,5 @@
 import { GitHubRestError, createGitHubRestClient } from '../github/rest-client.mjs';
+import { discoverRepositoryGovernanceState } from './discovery.mjs';
 
 const GOVERNANCE_PERMISSION = 'Administration: write';
 
@@ -101,12 +102,19 @@ export async function preflightRepositoryGovernance({
       throw permissionFailure(repositoryFullName);
     }
 
-    const rulesets = await client.listRepositoryRulesets(repositoryFullName);
+    const discovery = await discoverRepositoryGovernanceState({
+      repositoryFullName,
+      client,
+      repository
+    });
     return {
       status: 'ready',
       repositoryFullName: repository.full_name,
-      visibility: repository.visibility ?? (repository.private ? 'private' : 'public'),
-      rulesetCount: rulesets.length
+      visibility: discovery.visibility,
+      defaultBranch: discovery.defaultBranch,
+      rulesetCount: discovery.rulesets.length,
+      classicBranchProtection: discovery.classicBranchProtection !== null,
+      discovery
     };
   } catch (error) {
     if (error instanceof GovernancePreflightError) throw error;
