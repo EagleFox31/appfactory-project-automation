@@ -18,12 +18,13 @@ Project automation is the main product and the Marketplace Action. This reposito
 | Capability | Entry point | Purpose |
 | --- | --- | --- |
 | **GitHub Project automation** | `EagleFox31/appfactory-project-automation@v1` | Bootstrap/reconcile Projects, import backlog, apply metadata and synchronize Issue/PR lifecycle |
+| **Repository Governance** | `EagleFox31/appfactory-project-automation@v1` | Plan and reconcile default-branch protection while preserving existing repository rules |
 | **Standard product releases** | `.github/workflows/reusable-release.yml@v1` | Release Please, semantic versioning, tags and GitHub Releases |
 | **.NET desktop releases** | `.github/workflows/release-dotnet-desktop.yml@v1` | Release Please + deterministic `dotnet publish` + versioned ZIP + SHA-256 checksum |
 
-The three capabilities are independent. A repository can use Project automation, release automation, both, or neither.
+The capabilities are independent. A repository can adopt Project automation, governance and release automation separately.
 
-Repository Governance is the next AppFactory capability under active development. Its versioned policy, permission preflight and explicit `plan`/`apply` orchestration are documented in [Repository Governance architecture](docs/architecture/repository-governance.md). Governance is off by default; `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset.
+Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset.
 
 ## Why use it?
 

@@ -27,11 +27,16 @@ const rawEventName = process.env.GITHUB_EVENT_NAME;
 const eventName = rawEventName === 'pull_request_target' ? 'pull_request' : rawEventName;
 const eventPath = process.env.GITHUB_EVENT_PATH;
 
-if (!token) throw new Error('A project-capable GitHub token is required through input "token".');
+if (governanceMode === 'off' && !token) {
+  throw new Error('A project-capable GitHub token is required through input "token".');
+}
 if (!repositoryFullName) throw new Error('GITHUB_REPOSITORY is not available.');
 if (!fs.existsSync(configPath)) throw new Error(`Project config not found: ${configPath}`);
 
-const config = validateConfig(JSON.parse(fs.readFileSync(configPath, 'utf8')));
+const config = validateConfig(
+  JSON.parse(fs.readFileSync(configPath, 'utf8')),
+  { requireProject: governanceMode === 'off' }
+);
 const event = eventPath && fs.existsSync(eventPath)
   ? JSON.parse(fs.readFileSync(eventPath, 'utf8'))
   : {};

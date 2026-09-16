@@ -7,6 +7,7 @@ const entrypoint = fs.readFileSync(new URL('../src/index.mjs', import.meta.url),
 
 test('public Action keeps project auth and governance auth as separate inputs', () => {
   assert.match(action, /^  token:\n    description:/m);
+  assert.match(action, /token:[\s\S]*?required: false[\s\S]*?default: ""/);
   assert.match(action, /^  governance-token:\n    description:/m);
   assert.match(action, /governance-token:[\s\S]*?required: false[\s\S]*?default: ""/);
 });
@@ -19,4 +20,9 @@ test('governance execution is explicit and off by default', () => {
 test('governance plan or apply does not continue into Project automation', () => {
   assert.match(entrypoint, /if \(governanceMode === 'off'\) \{\n  await runProjectAutomation\(\);\n\} else \{/);
   assert.match(entrypoint, /executeRepositoryGovernance\(\{/);
+});
+
+test('governance-only execution does not require the unrelated Project credential', () => {
+  assert.match(entrypoint, /if \(governanceMode === 'off' && !token\)/);
+  assert.match(entrypoint, /requireProject: governanceMode === 'off'/);
 });

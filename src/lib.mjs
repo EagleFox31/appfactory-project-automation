@@ -178,13 +178,19 @@ function templateFor(name) {
   throw new Error(`Unknown project template: "${name}".`);
 }
 
-export function validateConfig(input) {
+export function validateConfig(input, { requireProject = true } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('Project config must be a JSON object.');
   }
-  if (!input.project?.owner) throw new Error('project.owner is required.');
-  if (!input.project?.title) throw new Error('project.title is required.');
-  if (input.project.bootstrap !== undefined && typeof input.project.bootstrap !== 'boolean') {
+  if (typeof requireProject !== 'boolean') {
+    throw new Error('validateConfig requireProject option must be a boolean.');
+  }
+  const hasProjectConfig = input.project !== undefined;
+  if (requireProject || hasProjectConfig) {
+    if (!input.project?.owner) throw new Error('project.owner is required.');
+    if (!input.project?.title) throw new Error('project.title is required.');
+  }
+  if (input.project?.bootstrap !== undefined && typeof input.project.bootstrap !== 'boolean') {
     throw new Error('project.bootstrap must be a boolean when provided.');
   }
   if (input.repository !== undefined && (
@@ -193,6 +199,17 @@ export function validateConfig(input) {
     || Array.isArray(input.repository)
   )) {
     throw new Error('repository must be an object when provided.');
+  }
+
+  const normalizedGovernance = normalizeGovernanceConfig(input.repository?.governance);
+  if (!hasProjectConfig) {
+    return {
+      ...input,
+      repository: {
+        ...(input.repository ?? {}),
+        governance: normalizedGovernance
+      }
+    };
   }
 
   const template = templateFor(input.project.template);
@@ -236,7 +253,7 @@ export function validateConfig(input) {
 
   config.repository = {
     ...(input.repository ?? {}),
-    governance: normalizeGovernanceConfig(input.repository?.governance)
+    governance: normalizedGovernance
   };
 
   return config;

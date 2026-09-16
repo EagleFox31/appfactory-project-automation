@@ -1,0 +1,37 @@
+name: Repository governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      governance_mode:
+        description: Preview with plan first. Choose apply only after reviewing the plan output.
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-governance-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  govern:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Plan or apply repository governance
+        uses: EagleFox31/appfactory-project-automation@v1
+        with:
+          governance-token: ${{ secrets.APPFACTORY_GOVERNANCE_TOKEN }}
+          governance-mode: ${{ inputs.governance_mode }}
+          config-path: .github/project-config.json

@@ -1,0 +1,8 @@
+{
+  "repository": {
+    "governance": {
+      "enabled": true,
+      "preset": "solo"
+    }
+  }
+}
