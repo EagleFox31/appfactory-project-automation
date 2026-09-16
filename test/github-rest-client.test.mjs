@@ -15,6 +15,27 @@ function jsonResponse(status, payload, statusText = '') {
   };
 }
 
+test('REST client reads repository metadata through the injected transport', async () => {
+  const calls = [];
+  const client = createGitHubRestClient({
+    token: 'governance-token',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options });
+      return jsonResponse(200, {
+        full_name: 'octo-org/product',
+        visibility: 'private',
+        permissions: { admin: true }
+      });
+    }
+  });
+
+  const repository = await client.getRepository('octo-org/product');
+
+  assert.equal(repository.full_name, 'octo-org/product');
+  assert.equal(calls[0].url, 'https://api.github.com/repos/octo-org/product');
+  assert.equal(calls[0].options.method, 'GET');
+});
+
 test('REST client creates a repository ruleset through the injected transport', async () => {
   const calls = [];
   const client = createGitHubRestClient({

@@ -4,7 +4,7 @@ Repository Governance extends AppFactory with declarative, convergent protection
 
 ## Status
 
-The configuration, policy-normalization, GitHub REST transport and idempotent reconciliation core are implemented as independent modules. Remote mutation remains disabled in the public Action entry point until permission preflight and plan/apply orchestration are complete and tested.
+The configuration, policy-normalization, GitHub REST transport, permission preflight and idempotent reconciliation core are implemented as independent modules. Remote mutation remains disabled in the public Action entry point until plan/apply orchestration is complete and tested.
 
 ## Module boundaries
 
@@ -36,11 +36,36 @@ Current modules:
 - `src/governance/policy.mjs` — consumer config validation and canonical policy;
 - `src/governance/ruleset.mjs` — policy-to-GitHub projection, canonical comparison and ownership lookup;
 - `src/governance/reconcile.mjs` — create/update/no-op orchestration against an injected client;
+- `src/governance/preflight.mjs` — dedicated credential validation, repository visibility and effective admin-capability checks;
 - `src/github/rest-client.mjs` — paginated GitHub Rulesets REST transport.
 
 The transport pins GitHub REST API version `2026-03-10`, injects authentication and `fetch`, paginates repository rulesets, and returns actionable HTTP errors without including token material.
 
 This separation keeps future PAT, GitHub App or other authentication mechanisms replaceable without changing governance policy.
+
+## Credential and preflight contract
+
+Project automation and repository governance have separate credentials:
+
+- `token` remains the existing Project-capable credential and is unchanged for current consumers;
+- `governance-token` is optional while governance is omitted or disabled;
+- once governance is enabled, `governance-token` is required and never falls back to the Project token;
+- the governance credential must select the target repository and grant repository **Administration: write** permission.
+
+The public Action performs a read-only governance preflight before any Project lookup or mutation when governance is enabled. It verifies that the credential resolves the exact runtime repository, that GitHub reports effective repository admin capability, and that repository rulesets can be enumerated. Missing, expired, forbidden and repository-selection failures produce separate remediation messages. The token is injected into the REST transport only; it is never returned, logged or added to diagnostic output.
+
+GitHub's list/get Rulesets endpoints require only Metadata read permission, so their success alone is not accepted as proof of administrative capability. AppFactory additionally checks the authenticated repository permission exposed by GitHub. Create/update endpoints remain the final authority for the token's fine-grained write scope; any later authorization failure must still be translated into the same actionable permission guidance rather than exposed as a raw API error.
+
+Example consumer mapping:
+
+```yaml
+- uses: EagleFox31/appfactory-project-automation@v1
+  with:
+    token: ${{ secrets.PROJECT_TOKEN }}
+    governance-token: ${{ secrets.APPFACTORY_GOVERNANCE_TOKEN }}
+```
+
+For a user-owned repository, the token owner must have admin access to that repository. For an organization-owned repository, the token owner must have an admin-capable organization/repository role, the organization must approve the credential when its policy requires approval, and the repository must be selected for the fine-grained token.
 
 ## Configuration contract
 

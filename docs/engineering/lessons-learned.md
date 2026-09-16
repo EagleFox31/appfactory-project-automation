@@ -40,3 +40,38 @@ Every function described as a normalizer should be closed over its canonical out
 **Derived principle / standard change**
 
 RAIDER idempotence tests should cover canonical-output re-entry, not only repeated execution with identical raw input.
+
+### LESSON-2026-002 — Read access is not governance authority
+
+- **Date:** 2026-09-16
+- **Category:** security
+- **Status:** prevention-added
+- **Related:** issue #18
+
+**Context**
+
+Repository Governance needs to verify its credential before any Rulesets mutation.
+
+**Failure / near miss**
+
+A successful `GET /repos/{owner}/{repo}/rulesets` looked like a suitable permission probe, but GitHub allows repository Rulesets list/get calls with Metadata read access. A public repository can therefore appear inspectable even when the credential cannot administer it.
+
+**Root cause**
+
+Resource visibility and mutation authority were treated as the same capability.
+
+**Resolution**
+
+Preflight now verifies exact repository identity, effective repository admin capability and Rulesets visibility separately. The dedicated governance credential requires Administration write access, and authorization failures are translated into actionable remediation without exposing the token.
+
+**Prevention**
+
+Tests prove that a readable repository with `permissions.admin !== true` fails before any create/update call, while disabled governance performs no credential or transport work.
+
+**Generalized lesson**
+
+Never use the success of a read endpoint as proof that a credential can perform a related write unless the platform explicitly gives both operations the same permission contract.
+
+**Derived principle / standard change**
+
+RAIDER security preflights must distinguish identity, visibility, effective role and operation-specific permission, and document any platform limit on non-mutating write-scope introspection.
