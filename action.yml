@@ -12,6 +12,11 @@ inputs:
     required: false
     default: ""
 
+  governance-mode:
+    description: Repository governance execution mode. Use off for normal Project automation, plan for a read-only preview, or apply to reconcile the AppFactory-managed ruleset.
+    required: false
+    default: "off"
+
   config-path:
     description: Path to the repository-specific project configuration JSON file.
     required: false

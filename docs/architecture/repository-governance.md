@@ -4,7 +4,7 @@ Repository Governance extends AppFactory with declarative, convergent protection
 
 ## Status
 
-The configuration, policy-normalization, GitHub REST transport, permission preflight and idempotent reconciliation core are implemented as independent modules. Remote mutation remains disabled in the public Action entry point until plan/apply orchestration is complete and tested.
+The configuration, policy normalization, GitHub REST transport, permission preflight and explicit plan/apply orchestration are implemented as independent modules. Governance execution is off by default; plan performs zero mutation and apply reconciles only the AppFactory-owned Ruleset.
 
 ## Module boundaries
 
@@ -35,8 +35,10 @@ Current modules:
 
 - `src/governance/policy.mjs` — consumer config validation and canonical policy;
 - `src/governance/ruleset.mjs` — policy-to-GitHub projection, canonical comparison and ownership lookup;
-- `src/governance/reconcile.mjs` — create/update/no-op orchestration against an injected client;
+- `src/governance/plan.mjs` — read-only discovery, create/update/no-op planning and human-readable diff output;
+- `src/governance/reconcile.mjs` — application of an already calculated plan against an injected client;
 - `src/governance/preflight.mjs` — dedicated credential validation, repository visibility and effective admin-capability checks;
+- `src/governance/execution.mjs` — safe `off`, `plan` and `apply` runtime orchestration;
 - `src/github/rest-client.mjs` — paginated GitHub Rulesets REST transport.
 
 The transport pins GitHub REST API version `2026-03-10`, injects authentication and `fetch`, paginates repository rulesets, and returns actionable HTTP errors without including token material.
@@ -52,7 +54,7 @@ Project automation and repository governance have separate credentials:
 - once governance is enabled, `governance-token` is required and never falls back to the Project token;
 - the governance credential must select the target repository and grant repository **Administration: write** permission.
 
-The public Action performs a read-only governance preflight before any Project lookup or mutation when governance is enabled. It verifies that the credential resolves the exact runtime repository, that GitHub reports effective repository admin capability, and that repository rulesets can be enumerated. Missing, expired, forbidden and repository-selection failures produce separate remediation messages. The token is injected into the REST transport only; it is never returned, logged or added to diagnostic output.
+The public Action performs a read-only governance preflight before any governance discovery or mutation when `governance-mode` is explicitly set to `plan` or `apply`. It verifies that the credential resolves the exact runtime repository, that GitHub reports effective repository admin capability, and that repository rulesets can be enumerated. Missing, expired, forbidden and repository-selection failures produce separate remediation messages. The token is injected into the REST transport only; it is never returned, logged or added to diagnostic output.
 
 GitHub's list/get Rulesets endpoints require only Metadata read permission, so their success alone is not accepted as proof of administrative capability. AppFactory additionally checks the authenticated repository permission exposed by GitHub. Create/update endpoints remain the final authority for the token's fine-grained write scope; any later authorization failure must still be translated into the same actionable permission guidance rather than exposed as a raw API error.
 
@@ -66,6 +68,27 @@ Example consumer mapping:
 ```
 
 For a user-owned repository, the token owner must have admin access to that repository. For an organization-owned repository, the token owner must have an admin-capable organization/repository role, the organization must approve the credential when its policy requires approval, and the repository must be selected for the fine-grained token.
+
+## Execution contract
+
+Governance execution is explicit and isolated from normal Project synchronization:
+
+- `governance-mode: off` is the backward-compatible default and runs only existing Project automation;
+- `governance-mode: plan` performs credential preflight and repository discovery, then prints the intended `create`, `update` or `no-op` decision without calling a write endpoint;
+- `governance-mode: apply` performs the same preflight and calculates the same plan, then applies that exact desired payload;
+- plan/apply invocations do not run Project bootstrap or Issue/PR lifecycle mutations in the same Action execution.
+
+The plan names the target repository, the AppFactory-managed Ruleset, the symbolic default-branch target, relevant setting changes and the number of unrelated Rulesets that will be preserved. A converged repository reports `No changes`.
+
+```yaml
+- uses: EagleFox31/appfactory-project-automation@v1
+  with:
+    token: ${{ secrets.PROJECT_TOKEN }}
+    governance-token: ${{ secrets.APPFACTORY_GOVERNANCE_TOKEN }}
+    governance-mode: ${{ inputs.governance_mode }}
+```
+
+A safe operating sequence is: run `plan`, review the output, then run `apply`. After any failed apply, running `plan` again recalculates current state before another write attempt.
 
 ## Configuration contract
 

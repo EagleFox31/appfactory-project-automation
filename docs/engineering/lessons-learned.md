@@ -75,3 +75,38 @@ Never use the success of a read endpoint as proof that a credential can perform 
 **Derived principle / standard change**
 
 RAIDER security preflights must distinguish identity, visibility, effective role and operation-specific permission, and document any platform limit on non-mutating write-scope introspection.
+
+### LESSON-2026-003 — A read-only plan must isolate unrelated mutators
+
+- **Date:** 2026-09-16
+- **Category:** safety
+- **Status:** prevention-added
+- **Related:** issue #19
+
+**Context**
+
+Repository Governance plan mode was added to the same public Action that already manages GitHub Projects.
+
+**Failure / near miss**
+
+Running a governance plan and then continuing through the existing Project bootstrap path would make the overall Action invocation capable of mutation even though the requested governance operation was described as read-only.
+
+**Root cause**
+
+Read-only semantics were initially considered only inside the new Governance module instead of across the complete Action execution boundary.
+
+**Resolution**
+
+Governance execution now has an explicit, backward-compatible `off` default. `plan` and `apply` are isolated from Project bootstrap and lifecycle handling, and plan never calls a Rulesets write endpoint.
+
+**Prevention**
+
+Execution tests assert zero write calls in plan mode, while the Action entry point routes normal Project automation and governance execution through mutually exclusive branches.
+
+**Generalized lesson**
+
+A dry-run guarantee applies to the whole command or workflow invocation, not merely to the newest subsystem inside it.
+
+**Derived principle / standard change**
+
+RAIDER plan modes must inventory and isolate every possible mutator reachable from the public entry point.

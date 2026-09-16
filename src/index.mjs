@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { preflightRepositoryGovernance } from './governance/preflight.mjs';
+import {
+  executeRepositoryGovernance,
+  formatRepositoryGovernanceExecution,
+  normalizeGovernanceMode
+} from './governance/execution.mjs';
 import {
   bootstrapFieldDefinitions,
   isBootstrapEnabled,
@@ -15,6 +19,7 @@ import {
 
 const token = process.env.INPUT_TOKEN || process.env.PROJECT_TOKEN;
 const governanceToken = process.env.INPUT_GOVERNANCE_TOKEN;
+const governanceMode = normalizeGovernanceMode(process.env.INPUT_GOVERNANCE_MODE);
 const configPath = path.resolve(process.env.INPUT_CONFIG_PATH || '.github/project-config.json');
 const manualIssueNumber = parseIssueNumber(process.env.INPUT_ISSUE_NUMBER || process.env.MANUAL_ISSUE_NUMBER);
 const repositoryFullName = process.env.GITHUB_REPOSITORY;
@@ -31,18 +36,6 @@ const event = eventPath && fs.existsSync(eventPath)
   ? JSON.parse(fs.readFileSync(eventPath, 'utf8'))
   : {};
 const [repositoryOwner, repositoryName] = repositoryFullName.split('/');
-
-const governancePreflight = await preflightRepositoryGovernance({
-  repositoryFullName,
-  policy: config.repository.governance,
-  governanceToken
-});
-if (governancePreflight.status === 'ready') {
-  console.log(
-    `Repository governance preflight passed for ${governancePreflight.repositoryFullName} ` +
-    `(${governancePreflight.visibility}).`
-  );
-}
 
 async function graphql(query, variables = {}) {
   const response = await fetch('https://api.github.com/graphql', {
@@ -647,29 +640,43 @@ async function handlePullRequestEvent(project) {
   }
 }
 
-const resolution = await resolveProject();
-let project = resolution.project;
-let bootstrapAlreadyRan = false;
+async function runProjectAutomation() {
+  const resolution = await resolveProject();
+  let project = resolution.project;
+  let bootstrapAlreadyRan = false;
 
-if (resolution.created) {
-  project = await bootstrapProject(project, resolution.repository, { freshProject: true });
-  bootstrapAlreadyRan = true;
+  if (resolution.created) {
+    project = await bootstrapProject(project, resolution.repository, { freshProject: true });
+    bootstrapAlreadyRan = true;
+  }
+
+  if (eventName === 'workflow_dispatch') {
+    if (manualIssueNumber) {
+      await handleManualIssue(project);
+    } else if (isBootstrapEnabled(config)) {
+      if (!bootstrapAlreadyRan) {
+        await bootstrapProject(project, resolution.repository, { freshProject: false });
+      }
+    } else {
+      throw new Error('Manual execution requires issue-number unless project.bootstrap is enabled.');
+    }
+  } else if (eventName === 'issues') {
+    await handleIssueEvent(project);
+  } else if (eventName === 'pull_request') {
+    await handlePullRequestEvent(project);
+  } else {
+    console.log(`Unsupported event ${rawEventName}; nothing to do.`);
+  }
 }
 
-if (eventName === 'workflow_dispatch') {
-  if (manualIssueNumber) {
-    await handleManualIssue(project);
-  } else if (isBootstrapEnabled(config)) {
-    if (!bootstrapAlreadyRan) {
-      await bootstrapProject(project, resolution.repository, { freshProject: false });
-    }
-  } else {
-    throw new Error('Manual execution requires issue-number unless project.bootstrap is enabled.');
-  }
-} else if (eventName === 'issues') {
-  await handleIssueEvent(project);
-} else if (eventName === 'pull_request') {
-  await handlePullRequestEvent(project);
+if (governanceMode === 'off') {
+  await runProjectAutomation();
 } else {
-  console.log(`Unsupported event ${rawEventName}; nothing to do.`);
+  const governanceExecution = await executeRepositoryGovernance({
+    mode: governanceMode,
+    repositoryFullName,
+    policy: config.repository.governance,
+    governanceToken
+  });
+  console.log(formatRepositoryGovernanceExecution(governanceExecution));
 }
