@@ -45,6 +45,19 @@ The transport pins GitHub REST API version `2026-03-10`, injects authentication 
 
 This separation keeps future PAT, GitHub App or other authentication mechanisms replaceable without changing governance policy.
 
+## Contract and versioning boundaries
+
+Repository Governance exposes a small public contract and keeps GitHub payload details internal:
+
+- **Public Action contract:** `governance-token`, `governance-mode` and `config-path` in `action.yml`. Existing inputs remain backward compatible within the `v1` major line.
+- **Public configuration contract:** the declarative `repository.governance` object. `policyVersion` identifies its normalized behavior; V1 rejects unsupported versions before any remote operation.
+- **Public operational contract:** `off`, `plan` and `apply`. `plan` is read-only, while `apply` consumes the exact desired payload calculated by the same planner.
+- **Private implementation contract:** REST paths, GitHub response shapes and module layout under `src/`. Consumers never configure or depend on them.
+
+Authentication is injected into the transport factory. Replacing a fine-grained PAT with a future GitHub App token must not change policy normalization, planning or reconciliation. Internal modules may evolve inside the major version as long as the public Action, configuration and operational contracts remain compatible.
+
+The executable architecture contract in `test/governance-architecture-contract.test.mjs` prevents pure policy modules from acquiring network or environment dependencies, prevents governance from importing Project automation internals, and keeps credential handling inside the injected REST transport.
+
 ## Credential and preflight contract
 
 Project automation and repository governance have separate credentials:
@@ -220,3 +233,14 @@ References:
 The executable consumer matrix, brownfield fixture and non-regression coverage map are documented in [RAIDER Contract Test Strategy](../testing/raider-contract.md).
 
 Implementation failures and near misses are recorded in [`../engineering/lessons-learned.md`](../engineering/lessons-learned.md).
+
+## Issue #26 acceptance evidence
+
+- transport, policy, discovery, planning, reconciliation, preflight and execution are separate modules;
+- desired-state and canonical comparison functions run without live GitHub access;
+- consumer configuration contains product intent rather than REST payload shapes;
+- the RAIDER consumer fixture matrix exercises different owners, branches, stacks and check contexts without source changes;
+- credentials and `fetch` are injected only through the REST client factory;
+- Action inputs and configuration version behavior are covered by contract tests;
+- credential, permission, visibility and ownership failures include remediation guidance;
+- the shared RAIDER review checklist is mandatory for future AppFactory capability work.
