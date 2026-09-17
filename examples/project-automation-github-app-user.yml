@@ -1,0 +1,28 @@
+name: Project automation
+
+on:
+  issues:
+    types: [opened, reopened, edited, closed]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, closed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Optional Issue to resync; leave empty to bootstrap.
+        required: false
+        type: string
+
+jobs:
+  sync-project:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@v1
+    with:
+      authentication: github-app-user
+      broker_url: ${{ vars.APPFACTORY_PROJECT_BROKER_URL }}
+      broker_audience: appfactory-project-automation
+      config_path: .github/project-config.json
+      issue_number: ${{ inputs.issue_number }}

@@ -13,7 +13,7 @@ Register the App with only the permissions required by the capabilities that wil
 | Repository Governance | Repository **Administration: Read and write** | Required to create or update repository Rulesets. Metadata read access is implicit. |
 | Product releases | Repository **Contents: Read and write** | Optional. AppFactory release workflows normally use the repository `GITHUB_TOKEN`, so no App permission is needed unless a consumer deliberately substitutes an App token. |
 | Organization-owned Projects | Organization **Projects: Read and write**, plus repository Metadata/Issues/Pull requests read for synchronized content | Applicable only when the configured Project belongs to an organization and the installation is authorized there. |
-| User-owned Projects | GitHub App **user access token** with Projects access | Installation tokens do not represent a user. The current Project automation PAT flow remains supported until AppFactory provides a hosted user-authorization and refresh flow. |
+| User-owned Projects | GitHub App **user access token** with Projects access | Installation tokens do not represent a user. The current PAT flow remains supported; the [OIDC/broker consumer flow](project-github-app-user-onboarding.md) requires a separately hosted authorization and refresh service. |
 
 Do not add Contents, Issues, Pull requests or Projects write permission merely because another AppFactory capability exists. Governance requests only `Administration: write` when it creates its repository-scoped installation token.
 

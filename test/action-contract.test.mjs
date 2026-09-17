@@ -8,6 +8,9 @@ const entrypoint = fs.readFileSync(new URL('../src/index.mjs', import.meta.url),
 test('public Action keeps project auth and governance auth as separate inputs', () => {
   assert.match(action, /^  token:\n    description:/m);
   assert.match(action, /token:[\s\S]*?required: false[\s\S]*?default: ""/);
+  assert.match(action, /^  project-authentication:\n    description:/m);
+  assert.match(action, /project-authentication:[\s\S]*?default: token/);
+  assert.match(action, /^  project-token-broker-url:\n    description:/m);
   assert.match(action, /^  governance-token:\n    description:/m);
   assert.match(action, /governance-token:[\s\S]*?required: false[\s\S]*?default: ""/);
   assert.match(action, /^  governance-administration-verified:\n    description:/m);
@@ -25,12 +28,15 @@ test('governance plan or apply does not continue into Project automation', () =>
 });
 
 test('governance-only execution does not require the unrelated Project credential', () => {
-  assert.match(entrypoint, /if \(governanceMode === 'off' && !token\)/);
+  assert.match(entrypoint, /const token = governanceMode === 'off'[\s\S]*?resolveProjectToken/);
+  assert.match(entrypoint, /: configuredProjectToken;/);
   assert.match(entrypoint, /requireProject: governanceMode === 'off'/);
 });
 
 test('entrypoint resolves hyphenated Action inputs through the shared adapter', () => {
   assert.match(entrypoint, /readActionInput\('governance-token'\)/);
+  assert.match(entrypoint, /readActionInput\('project-authentication'\)/);
+  assert.match(entrypoint, /readActionInput\('project-token-broker-url'\)/);
   assert.match(entrypoint, /readActionInput\('governance-administration-verified'\)/);
   assert.match(entrypoint, /readActionInput\('governance-mode'\)/);
   assert.match(entrypoint, /readActionInput\('config-path'\)/);

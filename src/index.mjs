@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readActionInput } from './action-inputs.mjs';
+import { resolveProjectToken } from './project-auth.mjs';
 import {
   executeRepositoryGovernance,
   formatRepositoryGovernanceExecution,
@@ -18,7 +19,11 @@ import {
   validateConfig
 } from './lib.mjs';
 
-const token = readActionInput('token') || process.env.PROJECT_TOKEN;
+const configuredProjectToken = readActionInput('token') || process.env.PROJECT_TOKEN;
+const projectAuthentication = readActionInput('project-authentication') || 'token';
+const projectTokenBrokerUrl = readActionInput('project-token-broker-url');
+const projectTokenBrokerAudience =
+  readActionInput('project-token-broker-audience') || 'appfactory-project-automation';
 const governanceToken = readActionInput('governance-token');
 const governanceAdministrationVerified =
   readActionInput('governance-administration-verified').trim().toLowerCase() === 'true';
@@ -30,11 +35,18 @@ const rawEventName = process.env.GITHUB_EVENT_NAME;
 const eventName = rawEventName === 'pull_request_target' ? 'pull_request' : rawEventName;
 const eventPath = process.env.GITHUB_EVENT_PATH;
 
-if (governanceMode === 'off' && !token) {
-  throw new Error('A project-capable GitHub token is required through input "token".');
-}
 if (!repositoryFullName) throw new Error('GITHUB_REPOSITORY is not available.');
 if (!fs.existsSync(configPath)) throw new Error(`Project config not found: ${configPath}`);
+
+const token = governanceMode === 'off'
+  ? await resolveProjectToken({
+      authentication: projectAuthentication,
+      token: configuredProjectToken,
+      brokerUrl: projectTokenBrokerUrl,
+      brokerAudience: projectTokenBrokerAudience,
+      repository: repositoryFullName
+    })
+  : configuredProjectToken;
 
 const config = validateConfig(
   JSON.parse(fs.readFileSync(configPath, 'utf8')),
