@@ -108,7 +108,7 @@ A safe operating sequence is: run `plan`, review the output, then run `apply`. A
 
 Continuous governance is a trigger-layer opt-in, not a hidden change to the Action default. Existing consumers remain on `governance-mode: off` or their manual workflow until they deliberately install the continuous caller.
 
-- `.github/workflows/reusable-repository-governance.yml` owns trusted default-branch checkout, dedicated secret injection, timeout and repository-scoped concurrency.
+- `.github/workflows/reusable-repository-governance.yml` owns trusted default-branch checkout, dedicated secret injection, timeout and repository-scoped concurrency. It defaults the runtime to `v1` and accepts an immutable `appfactory_ref` solely so pre-release candidates can be validated without publishing first.
 - `examples/repository-governance-continuous.yml` owns the consumer's explicit events: manual diagnostics, default-branch configuration changes and a UTC schedule.
 - non-manual events pass `apply`; manual dispatch preserves the `plan` / `apply` choice.
 - a push job proceeds only when `github.ref_name` equals the repository's reported default branch, preventing feature-branch workflow changes from receiving the governance secret.
