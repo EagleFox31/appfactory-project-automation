@@ -61,6 +61,21 @@ Run the workflow again with `governance_mode` set to `apply`. After it succeeds,
 
 Repeated runs are intentional and safe: AppFactory reads current state, creates or updates only its managed Ruleset, then converges to no additional write.
 
+## Enable continuous reconciliation after approval
+
+The manual workflow remains the onboarding and diagnostic path. After the first `plan`, reviewed `apply` and converged final `plan`, a consumer can explicitly opt into self-healing governance by replacing the manual example with [`examples/repository-governance-continuous.yml`](../examples/repository-governance-continuous.yml) at `.github/workflows/repository-governance.yml`.
+
+The continuous workflow keeps manual `plan` / `apply` available and adds two trusted automatic paths:
+
+- a merge that changes `.github/project-config.json` or the governance workflow on the default branch reconciles the approved policy immediately;
+- a daily run at **03:17 UTC** repairs out-of-band drift made through GitHub settings or the API.
+
+Pushes to non-default branches are skipped before the reusable workflow receives the governance secret. Scheduled and configuration-change runs always use `apply`; manual runs retain the explicit `plan` / `apply` choice. The shared reusable workflow checks out the trusted default branch and serializes execution with the same repository-scoped concurrency group, so two governance writes cannot race.
+
+Continuous execution still enters only the governance path: Project automation is not called, no pull request is merged and no release is created. Policy changes must first pass through the repository's protected pull-request flow before the default-branch push can reconcile them.
+
+The scheduled run also acts as credential monitoring. If the fine-grained token expires or is revoked, the workflow fails visibly in GitHub Actions without printing the credential. Rotate the token before its expiry and update only `APPFACTORY_GOVERNANCE_TOKEN`; the workflow and policy do not need to change.
+
 ## What the `solo` preset means
 
 In plain language, `solo`:
@@ -132,9 +147,9 @@ All supported fields and the policy model are documented in [Repository Governan
 
 ## Safe disable behavior
 
-Set `repository.governance.enabled` to `false`, then run the governance workflow in `plan` mode to confirm that governance is disabled. You can also remove or disable the manual workflow afterward.
+Set `repository.governance.enabled` to `false` through the protected pull-request flow. With the manual workflow, run `plan` to confirm governance is disabled. With continuous reconciliation enabled, merging that config change triggers a disabled no-op; remove or disable the continuous workflow afterward if scheduled checks should also stop.
 
-Disabling means **AppFactory stops reconciling future state**. It does not delete the previously created AppFactory Ruleset, classic branch protection or unrelated Rulesets. If the managed Ruleset itself must be removed, review and perform that separate destructive action manually in GitHub settings.
+Disabling means **AppFactory stops reconciling future state**. It does not delete the managed Ruleset, classic branch protection or unrelated Rulesets. If the managed Ruleset itself must be removed, review and perform that separate destructive action manually in GitHub settings.
 
 ## Troubleshooting
 
