@@ -1,0 +1,44 @@
+name: Reusable repository governance
+
+on:
+  workflow_call:
+    inputs:
+      governance_mode:
+        description: Governance execution mode passed to the AppFactory Action.
+        required: false
+        type: string
+        default: apply
+      config_path:
+        description: Path to the consumer repository governance configuration.
+        required: false
+        type: string
+        default: .github/project-config.json
+    secrets:
+      governance_token:
+        description: Dedicated credential with Administration write access to the consumer repository.
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-governance-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  govern:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reconcile repository governance
+        uses: EagleFox31/appfactory-project-automation@v1
+        with:
+          governance-token: ${{ secrets.governance_token }}
+          governance-mode: ${{ inputs.governance_mode }}
+          config-path: ${{ inputs.config_path }}
