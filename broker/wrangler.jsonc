@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "appfactory-project-token-broker",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-09-17",
+  "workers_dev": true,
+  "vars": {
+    "BROKER_AUDIENCE": "appfactory-project-automation",
+    "ALLOWED_JOB_WORKFLOW_REFS": "REPLACE_AFTER_MERGE",
+    "PUBLIC_BASE_URL": "https://REPLACE_AFTER_DEPLOY.workers.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "appfactory-project-token-broker",
+      "database_id": "REPLACE_AFTER_D1_CREATE"
+    }
+  ]
+}
