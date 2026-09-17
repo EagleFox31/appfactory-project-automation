@@ -26,6 +26,8 @@ The capabilities are independent. A repository can adopt Project automation, gov
 
 Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair. Governance supports both the existing dedicated PAT and [short-lived GitHub App authentication](docs/github-app-onboarding.md).
 
+Project automation remains backward compatible with `PROJECT_TOKEN`. For user-owned Projects, AppFactory also defines a [zero-PAT GitHub App user flow](docs/project-github-app-user-onboarding.md) that exchanges a job-specific GitHub Actions OIDC proof through a compatible hosted broker. The broker, not the consumer repository, owns refresh-token storage and rotation.
+
 ## Why use it?
 
 Setting up a useful GitHub Project is easy once. Keeping the same structure across multiple repositories is the repetitive part.
@@ -131,7 +133,7 @@ jobs:
 
 ### 3. Add the token
 
-Create a repository Actions secret named `PROJECT_TOKEN` with GitHub Projects access to the configured owner.
+Create a repository Actions secret named `PROJECT_TOKEN` with GitHub Projects access to the configured owner. To remove that long-lived repository secret, use the separate [GitHub App user/OIDC onboarding flow](docs/project-github-app-user-onboarding.md) after a compatible broker has been deployed and authorized.
 
 ### 4. Bootstrap once
 

@@ -1,0 +1,149 @@
+name: Reusable Project automation
+
+on:
+  workflow_call:
+    inputs:
+      authentication:
+        description: Credential source. Use token for the existing PAT flow or github-app-user for brokered user authorization.
+        required: false
+        type: string
+        default: token
+      broker_url:
+        description: HTTPS endpoint that exchanges a GitHub Actions OIDC proof for a short-lived GitHub App user token.
+        required: false
+        type: string
+        default: ''
+      broker_audience:
+        description: Audience enforced by the AppFactory token broker.
+        required: false
+        type: string
+        default: appfactory-project-automation
+      config_path:
+        description: Path to the consumer repository Project configuration.
+        required: false
+        type: string
+        default: .github/project-config.json
+      issue_number:
+        description: Optional Issue number for a manual resync.
+        required: false
+        type: string
+        default: ''
+      appfactory_ref:
+        description: AppFactory tag or immutable commit to execute. Keep v1 after release.
+        required: false
+        type: string
+        default: v1
+    secrets:
+      project_token:
+        description: Existing Projects-capable PAT. Required only when authentication is token.
+        required: false
+
+concurrency:
+  group: project-automation-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Validate Project authentication
+        shell: bash
+        env:
+          AUTHENTICATION: ${{ inputs.authentication }}
+          BROKER_URL: ${{ inputs.broker_url }}
+          PROJECT_TOKEN: ${{ secrets.project_token }}
+        run: |
+          case "$AUTHENTICATION" in
+            token)
+              if [[ -z "$PROJECT_TOKEN" ]]; then
+                echo '::error title=Missing Project token::authentication=token requires the project_token secret.'
+                exit 1
+              fi
+              if [[ -n "$BROKER_URL" ]]; then
+                echo '::error title=Mixed Project authentication::broker_url must be empty when authentication=token.'
+                exit 1
+              fi
+              ;;
+            github-app-user)
+              if [[ -z "$BROKER_URL" ]]; then
+                echo '::error title=Missing token broker::authentication=github-app-user requires broker_url.'
+                exit 1
+              fi
+              if [[ -n "$PROJECT_TOKEN" ]]; then
+                echo '::error title=Mixed Project authentication::project_token must be empty when authentication=github-app-user.'
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error title=Invalid authentication mode::Expected token or github-app-user, received $AUTHENTICATION."
+              exit 1
+              ;;
+          esac
+
+  sync-token:
+    if: ${{ inputs.authentication == 'token' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout AppFactory runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+
+      - name: Synchronize GitHub Project
+        uses: ./.appfactory
+        with:
+          token: ${{ secrets.project_token }}
+          project-authentication: token
+          config-path: ${{ inputs.config_path }}
+          issue-number: ${{ inputs.issue_number }}
+
+  sync-github-app-user:
+    if: ${{ inputs.authentication == 'github-app-user' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout AppFactory runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+
+      - name: Synchronize GitHub Project
+        uses: ./.appfactory
+        with:
+          project-authentication: github-app-user
+          project-token-broker-url: ${{ inputs.broker_url }}
+          project-token-broker-audience: ${{ inputs.broker_audience }}
+          config-path: ${{ inputs.config_path }}
+          issue-number: ${{ inputs.issue_number }}
