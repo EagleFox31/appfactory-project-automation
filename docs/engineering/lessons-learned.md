@@ -215,3 +215,38 @@ An integration boundary is not covered when tests reproduce a convenient approxi
 **Derived principle / standard change**
 
 RAIDER adapters must centralize platform-generated inputs and include at least one contract test built from the platform's literal runtime representation.
+
+### LESSON-2026-007 — Convergence is not continuous enforcement
+
+- **Date:** 2026-09-17
+- **Category:** operations
+- **Status:** prevention-added
+- **Related:** issue #37
+
+**Context**
+
+Live validation on AgenStart and AgenFetch proved that Repository Governance could detect drift, repair only the AppFactory-owned Ruleset and converge to a no-op.
+
+**Failure / near miss**
+
+Every repair still required an operator to launch `apply`. The reconciliation engine was idempotent, but the operating model was not self-healing and could leave direct GitHub/UI/API drift active indefinitely.
+
+**Root cause**
+
+Engine convergence was treated as equivalent to durable enforcement. No trusted event layer was responsible for deciding when an already approved policy should be reapplied.
+
+**Resolution**
+
+AppFactory now provides an opt-in continuous caller plus a reusable governance workflow. Approved config changes on the default branch reconcile immediately, a scheduled run repairs out-of-band drift, manual plan/apply remains available, and repository-scoped concurrency prevents write races.
+
+**Prevention**
+
+Workflow contract tests assert trusted default-branch gating, scheduled apply, explicit secret flow and isolation from Project automation, pull-request merging and release automation.
+
+**Generalized lesson**
+
+An idempotent reconciler becomes operationally durable only when a safe, observable and explicitly authorized trigger policy runs it.
+
+**Derived principle / standard change**
+
+RAIDER durability reviews must test both convergence behavior and the event model that detects future drift; automatic enforcement must remain opt-in and independently disableable.

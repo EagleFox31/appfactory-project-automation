@@ -104,6 +104,18 @@ The plan names the target repository, the AppFactory-managed Ruleset, the symbol
 
 A safe operating sequence is: run `plan`, review the output, then run `apply`. After any failed apply, running `plan` again recalculates current state before another write attempt.
 
+### Continuous reconciliation contract
+
+Continuous governance is a trigger-layer opt-in, not a hidden change to the Action default. Existing consumers remain on `governance-mode: off` or their manual workflow until they deliberately install the continuous caller.
+
+- `.github/workflows/reusable-repository-governance.yml` owns trusted default-branch checkout, dedicated secret injection, timeout and repository-scoped concurrency. It defaults the runtime to `v1` and accepts an immutable `appfactory_ref` solely so pre-release candidates can be validated without publishing first.
+- `examples/repository-governance-continuous.yml` owns the consumer's explicit events: manual diagnostics, default-branch configuration changes and a UTC schedule.
+- non-manual events pass `apply`; manual dispatch preserves the `plan` / `apply` choice.
+- a push job proceeds only when `github.ref_name` equals the repository's reported default branch, preventing feature-branch workflow changes from receiving the governance secret.
+- the Action's existing mutually exclusive execution routing guarantees that an automatic governance call cannot enter Project automation or release workflows.
+
+The scheduled path is intentionally convergent: healthy repositories report a no-op, while drift in the AppFactory-owned Ruleset is repaired in place. Unrelated Rulesets and classic protection remain read-only inventory. Workflow failures are surfaced by GitHub Actions and never trigger a merge or release.
+
 ## Configuration contract
 
 Governance is opt-in. Omitting the section, or setting `enabled` to `false`, normalizes to a disabled no-op and preserves existing consumers. In `plan` or `apply` mode, a governance-only config may contain only the `repository.governance` object. Project fields and the Project credential remain mandatory when `governance-mode` is `off` and the existing Project automation path runs.
