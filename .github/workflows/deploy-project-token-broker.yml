@@ -1,0 +1,177 @@
+name: Deploy Project token broker
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_schema:
+        description: Apply the idempotent D1 schema before deployment
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appfactory-project-token-broker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy broker to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: project-token-broker-production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+      TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+      BROKER_ALLOWED_JOB_WORKFLOW_REFS: ${{ vars.BROKER_ALLOWED_JOB_WORKFLOW_REFS }}
+      CONFIG_PATH: broker/wrangler.deploy.jsonc
+      DATABASE_NAME: appfactory-project-token-broker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Validate deployment configuration
+        env:
+          CONFIGURED_PUBLIC_BASE_URL: ${{ vars.BROKER_PUBLIC_BASE_URL }}
+        shell: bash
+        run: |
+          missing=()
+          for name in \
+            CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_ACCOUNT_ID \
+            GITHUB_CLIENT_ID \
+            GITHUB_CLIENT_SECRET \
+            TOKEN_ENCRYPTION_KEY \
+            BROKER_ALLOWED_JOB_WORKFLOW_REFS
+          do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error title=Missing broker deployment configuration::Set: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-https://bootstrap.invalid}"
+          BROKER_PUBLIC_BASE_URL="${public_base_url}" \
+            node broker/scripts/render-wrangler-config.mjs \
+              prepare broker/wrangler.jsonc "${CONFIG_PATH}"
+
+      - name: Reuse or create the D1 database
+        id: d1
+        shell: bash
+        run: |
+          databases="$(npx --yes wrangler@4 d1 list --json --config "${CONFIG_PATH}")"
+          database_id="$(
+            jq -r --arg name "${DATABASE_NAME}" \
+              '.[] | select(.name == $name) | .uuid' \
+              <<< "${databases}" | head -n 1
+          )"
+
+          if [[ -n "${database_id}" ]]; then
+            node broker/scripts/render-wrangler-config.mjs \
+              bind-d1 "${CONFIG_PATH}" "${database_id}"
+            echo "created=false" >> "${GITHUB_OUTPUT}"
+          else
+            npx --yes wrangler@4 d1 create "${DATABASE_NAME}" \
+              --binding DB \
+              --update-config \
+              --config "${CONFIG_PATH}"
+            echo "created=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Apply D1 schema
+        if: ${{ inputs.apply_schema }}
+        run: >-
+          npx --yes wrangler@4 d1 execute DB
+          --remote
+          --file=broker/schema.sql
+          --yes
+          --config "${CONFIG_PATH}"
+
+      - name: Deploy broker
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+          secrets: |
+            GITHUB_CLIENT_ID
+            GITHUB_CLIENT_SECRET
+            TOKEN_ENCRYPTION_KEY
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+
+      - name: Adopt the discovered workers.dev URL
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          if [[ -z "${DEPLOYMENT_URL}" ]]; then
+            echo '::error title=Missing deployment URL::Wrangler did not report the deployed Worker URL.'
+            exit 1
+          fi
+          node broker/scripts/render-wrangler-config.mjs \
+            set-public-base-url "${CONFIG_PATH}" "${DEPLOYMENT_URL}"
+
+      - name: Redeploy with the discovered public URL
+        id: redeploy
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+          secrets: |
+            GITHUB_CLIENT_ID
+            GITHUB_CLIENT_SECRET
+            TOKEN_ENCRYPTION_KEY
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+
+      - name: Verify broker health
+        env:
+          CONFIGURED_PUBLIC_BASE_URL: ${{ vars.BROKER_PUBLIC_BASE_URL }}
+          INITIAL_DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          FINAL_DEPLOYMENT_URL: ${{ steps.redeploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-${FINAL_DEPLOYMENT_URL:-${INITIAL_DEPLOYMENT_URL}}}"
+          public_base_url="${public_base_url%/}"
+          curl --fail --silent --show-error \
+            --retry 4 --retry-all-errors --retry-delay 2 \
+            "${public_base_url}/healthz"
+          echo "BROKER_PUBLIC_BASE_URL=${public_base_url}" >> "${GITHUB_ENV}"
+
+      - name: Write deployment summary
+        shell: bash
+        run: |
+          {
+            echo '## Project token broker deployed'
+            echo
+            echo "- Worker: ${BROKER_PUBLIC_BASE_URL}"
+            echo "- D1 created during this run: ${{ steps.d1.outputs.created }}"
+            echo "- Health: ${BROKER_PUBLIC_BASE_URL}/healthz"
+            echo "- GitHub App callback: ${BROKER_PUBLIC_BASE_URL}/callback"
+            echo "- Authorization: ${BROKER_PUBLIC_BASE_URL}/authorize"
+          } >> "${GITHUB_STEP_SUMMARY}"
