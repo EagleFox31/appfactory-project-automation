@@ -28,6 +28,8 @@ Repository Governance is opt-in and off by default. Start with the [beginner-fir
 
 Project automation remains backward compatible with `PROJECT_TOKEN`. For user-owned Projects, AppFactory also defines a [zero-PAT GitHub App user flow](docs/project-github-app-user-onboarding.md) that exchanges a job-specific GitHub Actions OIDC proof through a compatible hosted broker. The broker, not the consumer repository, owns refresh-token storage and rotation.
 
+The reference Cloudflare Worker implementation lives in [`broker/`](broker/README.md). It verifies GitHub Actions OIDC identity, encrypts rotating GitHub App user credentials in D1 and restricts exchanges to exact reusable-workflow identities.
+
 ## Why use it?
 
 Setting up a useful GitHub Project is easy once. Keeping the same structure across multiple repositories is the repetitive part.
