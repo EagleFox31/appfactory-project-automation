@@ -13,6 +13,11 @@ inputs:
     required: false
     default: ""
 
+  governance-administration-verified:
+    description: Set to true only when the caller already proved Administration write while minting the governance credential. AppFactory reusable workflows set this for repository-scoped GitHub App tokens.
+    required: false
+    default: "false"
+
   governance-mode:
     description: Repository governance execution mode. Use off for normal Project automation, plan for a read-only preview, or apply to reconcile the AppFactory-managed ruleset.
     required: false

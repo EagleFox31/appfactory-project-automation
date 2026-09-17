@@ -24,6 +24,10 @@ test('reusable governance supports explicit PAT and GitHub App authentication pr
 test('GitHub App token is short-lived, least-privilege and repository-scoped', () => {
   assert.match(reusable, /uses: actions\/create-github-app-token@v3/);
   assert.match(reusable, /permission-administration: write/);
+  assert.match(
+    reusable,
+    /governance-administration-verified: \$\{\{ inputs\.authentication == 'github-app' \}\}/
+  );
   assert.doesNotMatch(reusable, /^          owner:/m);
   assert.doesNotMatch(reusable, /^          repositories:/m);
   assert.match(

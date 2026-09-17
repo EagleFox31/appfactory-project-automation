@@ -67,9 +67,9 @@ Project automation and repository governance have separate credentials:
 - once governance is enabled, `governance-token` is required and never falls back to the Project token;
 - the governance credential must select the target repository and grant repository **Administration: write** permission.
 
-The public Action performs a read-only governance preflight before any governance discovery or mutation when `governance-mode` is explicitly set to `plan` or `apply`. It verifies that the credential resolves the exact runtime repository, that GitHub reports effective repository admin capability, and that repository rulesets can be enumerated. Missing, expired, forbidden and repository-selection failures produce separate remediation messages. The token is injected into the REST transport only; it is never returned, logged or added to diagnostic output.
+The public Action performs a read-only governance preflight before any governance discovery or mutation when `governance-mode` is explicitly set to `plan` or `apply`. It verifies that the credential resolves the exact runtime repository, that administrative capability is established by the provider boundary or GitHub repository metadata, and that repository rulesets can be enumerated. Missing, expired, forbidden and repository-selection failures produce separate remediation messages. The token is injected into the REST transport only; it is never returned, logged or added to diagnostic output.
 
-GitHub's list/get Rulesets endpoints require only Metadata read permission, so their success alone is not accepted as proof of administrative capability. AppFactory additionally checks the authenticated repository permission exposed by GitHub. Create/update endpoints remain the final authority for the token's fine-grained write scope; any later authorization failure must still be translated into the same actionable permission guidance rather than exposed as a raw API error.
+GitHub's list/get Rulesets endpoints require only Metadata read permission, so their success alone is not accepted as proof of administrative capability. PAT-backed runs check the authenticated repository permission exposed by GitHub. GitHub App installation tokens do not expose that user-role-shaped `permissions.admin` signal consistently; for those runs, `actions/create-github-app-token` proves the capability by successfully narrowing the repository-scoped token to `permission-administration: write`, and the reusable workflow passes a non-secret capability attestation to the Action. Create/update endpoints remain the final authority for the token's fine-grained write scope; any later authorization failure must still be translated into the same actionable permission guidance rather than exposed as a raw API error.
 
 Example consumer mapping:
 
@@ -85,7 +85,7 @@ Consumers that also run Project automation continue to pass `token` in their sep
 The reusable workflow adds a provider boundary above the Action:
 
 - `authentication: token` passes the existing dedicated PAT secret;
-- `authentication: github-app` creates a repository-scoped installation token with `Administration: write` and passes that token to the same Action input.
+- `authentication: github-app` creates a repository-scoped installation token with `Administration: write`, passes that token to the same Action input and attests that GitHub validated the requested capability.
 
 The GitHub App client ID and private key are workflow-layer concerns. They must not enter configuration JSON, the REST client, policy normalization or reconciliation. This preserves authentication-provider agnosticity while allowing PAT-backed repositories to migrate without changing desired state or managed resource identity. See [GitHub App onboarding](../github-app-onboarding.md).
 

@@ -81,6 +81,7 @@ export async function preflightRepositoryGovernance({
   repositoryFullName,
   policy,
   governanceToken,
+  administrationCapabilityVerified = false,
   clientFactory = createGitHubRestClient
 }) {
   if (!policy?.enabled) {
@@ -98,7 +99,7 @@ export async function preflightRepositoryGovernance({
     ) {
       throw repositoryMismatch(repositoryFullName, repository?.full_name);
     }
-    if (repository.permissions?.admin !== true) {
+    if (!administrationCapabilityVerified && repository.permissions?.admin !== true) {
       throw permissionFailure(repositoryFullName);
     }
 

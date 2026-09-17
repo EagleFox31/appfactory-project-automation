@@ -106,5 +106,6 @@ jobs:
         uses: ./.appfactory
         with:
           governance-token: ${{ inputs.authentication == 'github-app' && steps.app-token.outputs.token || secrets.governance_token }}
+          governance-administration-verified: ${{ inputs.authentication == 'github-app' }}
           governance-mode: ${{ inputs.governance_mode }}
           config-path: ${{ inputs.config_path }}

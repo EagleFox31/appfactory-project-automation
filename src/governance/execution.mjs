@@ -20,6 +20,7 @@ export async function executeRepositoryGovernance({
   repositoryFullName,
   policy,
   governanceToken,
+  administrationCapabilityVerified = false,
   clientFactory = createGitHubRestClient
 }) {
   const executionMode = normalizeGovernanceMode(mode);
@@ -43,6 +44,7 @@ export async function executeRepositoryGovernance({
     repositoryFullName,
     policy,
     governanceToken,
+    administrationCapabilityVerified,
     clientFactory(options) {
       client = clientFactory(options);
       return client;
