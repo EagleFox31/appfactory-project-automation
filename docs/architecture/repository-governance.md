@@ -43,7 +43,7 @@ Current modules:
 
 The transport pins GitHub REST API version `2026-03-10`, injects authentication and `fetch`, paginates repository rulesets, and returns actionable HTTP errors without including token material.
 
-This separation keeps future PAT, GitHub App or other authentication mechanisms replaceable without changing governance policy.
+This separation keeps PAT, GitHub App or other authentication mechanisms replaceable without changing governance policy. The reusable workflow may mint a short-lived GitHub App installation token, but the engine and REST transport continue to receive only an opaque token.
 
 ## Contract and versioning boundaries
 
@@ -54,7 +54,7 @@ Repository Governance exposes a small public contract and keeps GitHub payload d
 - **Public operational contract:** `off`, `plan` and `apply`. `plan` is read-only, while `apply` consumes the exact desired payload calculated by the same planner.
 - **Private implementation contract:** REST paths, GitHub response shapes and module layout under `src/`. Consumers never configure or depend on them.
 
-Authentication is injected into the transport factory. Replacing a fine-grained PAT with a future GitHub App token must not change policy normalization, planning or reconciliation. Internal modules may evolve inside the major version as long as the public Action, configuration and operational contracts remain compatible.
+Authentication is injected into the transport factory. Replacing a fine-grained PAT with a GitHub App token does not change policy normalization, planning or reconciliation. Internal modules may evolve inside the major version as long as the public Action, configuration and operational contracts remain compatible.
 
 The executable architecture contract in `test/governance-architecture-contract.test.mjs` prevents pure policy modules from acquiring network or environment dependencies, prevents governance from importing Project automation internals, and keeps credential handling inside the injected REST transport.
 
@@ -81,6 +81,13 @@ Example consumer mapping:
 ```
 
 Consumers that also run Project automation continue to pass `token` in their separate Project workflow. Governance never falls back to that credential.
+
+The reusable workflow adds a provider boundary above the Action:
+
+- `authentication: token` passes the existing dedicated PAT secret;
+- `authentication: github-app` creates a repository-scoped installation token with `Administration: write` and passes that token to the same Action input.
+
+The GitHub App client ID and private key are workflow-layer concerns. They must not enter configuration JSON, the REST client, policy normalization or reconciliation. This preserves authentication-provider agnosticity while allowing PAT-backed repositories to migrate without changing desired state or managed resource identity. See [GitHub App onboarding](../github-app-onboarding.md).
 
 For a user-owned repository, the token owner must have admin access to that repository. For an organization-owned repository, the token owner must have an admin-capable organization/repository role, the organization must approve the credential when its policy requires approval, and the repository must be selected for the fine-grained token.
 

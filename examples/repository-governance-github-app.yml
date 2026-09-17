@@ -1,0 +1,34 @@
+name: Repository governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      governance_mode:
+        description: Preview with plan or reconcile with apply.
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+  push:
+    paths:
+      - .github/project-config.json
+      - .github/workflows/repository-governance.yml
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-repository-governance.yml@v1
+    with:
+      governance_mode: ${{ github.event_name == 'workflow_dispatch' && inputs.governance_mode || 'apply' }}
+      config_path: .github/project-config.json
+      authentication: github-app
+      app_client_id: ${{ vars.APPFACTORY_APP_CLIENT_ID }}
+    secrets:
+      app_private_key: ${{ secrets.APPFACTORY_APP_PRIVATE_KEY }}

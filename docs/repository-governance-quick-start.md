@@ -25,6 +25,8 @@ The tested copy is available at [`examples/repository-governance-config.json`](.
 
 ### 2. Create the dedicated secret
 
+The default setup below preserves the existing fine-grained PAT path. For short-lived, zero-PAT authentication, follow [GitHub App onboarding](github-app-onboarding.md) and use the dedicated GitHub App workflow example instead.
+
 Create a fine-grained GitHub token for the account or organization that owns the target repository:
 
 1. Select only the repository being governed.
@@ -75,6 +77,8 @@ Pushes to non-default branches are skipped before the reusable workflow receives
 Continuous execution still enters only the governance path: Project automation is not called, no pull request is merged and no release is created. Policy changes must first pass through the repository's protected pull-request flow before the default-branch push can reconcile them.
 
 The scheduled run also acts as credential monitoring. If the fine-grained token expires or is revoked, the workflow fails visibly in GitHub Actions without printing the credential. Rotate the token before its expiry and update only `APPFACTORY_GOVERNANCE_TOKEN`; the workflow and policy do not need to change.
+
+With GitHub App authentication, each run creates a repository-scoped installation token that expires after one hour and is revoked when the job completes. The schedule then monitors App installation, permission and private-key validity instead of PAT expiry.
 
 ## What the `solo` preset means
 
@@ -160,6 +164,8 @@ Confirm that the secret is named exactly `APPFACTORY_GOVERNANCE_TOKEN` and that 
 ### Invalid or expired credential
 
 Generate a replacement fine-grained token, update the Actions secret and rerun `plan`. AppFactory never prints the submitted token.
+
+For GitHub App authentication, confirm that the App is still installed on the repository, `APPFACTORY_APP_CLIENT_ID` matches the App, and `APPFACTORY_APP_PRIVATE_KEY` contains an active complete PEM key.
 
 ### Repository not visible
 

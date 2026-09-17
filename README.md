@@ -24,7 +24,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 
 The capabilities are independent. A repository can adopt Project automation, governance and release automation separately.
 
-Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair.
+Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair. Governance supports both the existing dedicated PAT and [short-lived GitHub App authentication](docs/github-app-onboarding.md).
 
 ## Why use it?
 
