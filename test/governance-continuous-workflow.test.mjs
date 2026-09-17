@@ -35,6 +35,9 @@ test('reusable governance execution is serialized and isolated from Project and 
   assert.match(reusable, /cancel-in-progress: false/);
   assert.match(reusable, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.match(reusable, /persist-credentials: false/);
+  assert.match(reusable, /repository: EagleFox31\/appfactory-project-automation/);
+  assert.match(reusable, /ref: \$\{\{ inputs\.appfactory_ref \}\}/);
+  assert.match(reusable, /uses: \.\/\.appfactory/);
   assert.match(reusable, /governance-mode: \$\{\{ inputs\.governance_mode \}\}/);
   assert.match(reusable, /governance-token: \$\{\{ secrets\.governance_token \}\}/);
   assert.doesNotMatch(reusable, /PROJECT_TOKEN|release-please|reusable-release|pull_request_target/);
