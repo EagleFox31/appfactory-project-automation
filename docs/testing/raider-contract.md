@@ -31,3 +31,7 @@ The legacy fixture proves that an existing `project-config.json` without Reposit
 The repository's existing CI workflow runs `npm test` on every pull request and push to `main`. New tests are discovered automatically by Node's test runner; no separate governance-only command exists that could pass while legacy behavior is broken.
 
 An intentional incompatible governance change must increment the policy contract version and update its fixtures explicitly. Changing fixture expectations without a documented version transition is not an acceptable way to make a regression green.
+
+## Live consumer evidence
+
+The executable contract is complemented by a real brownfield consumer. [AgenStart Repository Governance V1 validation](agenstart-governance-v1-validation.md) records read-only planning, single-resource creation, protected issue/PR lifecycle, Project and release non-regression, no-op convergence, controlled drift and in-place repair on `EagleFox31/AgenStart`.
