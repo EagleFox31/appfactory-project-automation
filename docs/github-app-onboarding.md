@@ -57,7 +57,7 @@ The reusable workflow:
 2. uses `actions/create-github-app-token@v3` to create a one-hour installation token;
 3. scopes the token to the current repository by omitting broader owner/repository targets;
 4. requests only `Administration: write`;
-5. passes the masked token to the unchanged AppFactory governance Action;
+5. passes the masked token and GitHub-validated Administration capability to the AppFactory governance Action;
 6. lets the token action revoke the token automatically when the job completes.
 
 Manual `plan` remains the first safe run. Review it, run `apply`, then run `plan` again and expect `NO-OP`.

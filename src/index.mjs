@@ -20,6 +20,8 @@ import {
 
 const token = readActionInput('token') || process.env.PROJECT_TOKEN;
 const governanceToken = readActionInput('governance-token');
+const governanceAdministrationVerified =
+  readActionInput('governance-administration-verified').trim().toLowerCase() === 'true';
 const governanceMode = normalizeGovernanceMode(readActionInput('governance-mode'));
 const configPath = path.resolve(readActionInput('config-path') || '.github/project-config.json');
 const manualIssueNumber = parseIssueNumber(readActionInput('issue-number') || process.env.MANUAL_ISSUE_NUMBER);
@@ -682,7 +684,8 @@ if (governanceMode === 'off') {
     mode: governanceMode,
     repositoryFullName,
     policy: config.repository.governance,
-    governanceToken
+    governanceToken,
+    administrationCapabilityVerified: governanceAdministrationVerified
   });
   console.log(formatRepositoryGovernanceExecution(governanceExecution));
 }

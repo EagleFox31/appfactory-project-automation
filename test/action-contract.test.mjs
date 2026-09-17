@@ -10,6 +10,8 @@ test('public Action keeps project auth and governance auth as separate inputs', 
   assert.match(action, /token:[\s\S]*?required: false[\s\S]*?default: ""/);
   assert.match(action, /^  governance-token:\n    description:/m);
   assert.match(action, /governance-token:[\s\S]*?required: false[\s\S]*?default: ""/);
+  assert.match(action, /^  governance-administration-verified:\n    description:/m);
+  assert.match(action, /governance-administration-verified:[\s\S]*?default: "false"/);
 });
 
 test('governance execution is explicit and off by default', () => {
@@ -29,6 +31,7 @@ test('governance-only execution does not require the unrelated Project credentia
 
 test('entrypoint resolves hyphenated Action inputs through the shared adapter', () => {
   assert.match(entrypoint, /readActionInput\('governance-token'\)/);
+  assert.match(entrypoint, /readActionInput\('governance-administration-verified'\)/);
   assert.match(entrypoint, /readActionInput\('governance-mode'\)/);
   assert.match(entrypoint, /readActionInput\('config-path'\)/);
   assert.match(entrypoint, /readActionInput\('issue-number'\)/);

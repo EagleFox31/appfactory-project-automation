@@ -136,6 +136,33 @@ test('insufficient repository role fails before any mutation', async () => {
   assert.deepEqual(client.calls.map((call) => call.operation), ['get']);
 });
 
+test('preverified administration capability supports repository-scoped GitHub App tokens', async () => {
+  const client = preflightClient({
+    repository: {
+      full_name: REPOSITORY,
+      visibility: 'private',
+      default_branch: 'main',
+      permissions: { admin: false }
+    },
+    rulesets: [{ id: 42 }]
+  });
+
+  const result = await preflightRepositoryGovernance({
+    repositoryFullName: REPOSITORY,
+    policy: ENABLED,
+    governanceToken: 'short-lived-installation-token',
+    administrationCapabilityVerified: true,
+    clientFactory: () => client
+  });
+
+  assert.equal(result.status, 'ready');
+  assert.equal(result.rulesetCount, 1);
+  assert.deepEqual(
+    client.calls.map((call) => call.operation),
+    ['get', 'list', 'get-protection']
+  );
+});
+
 test('repository visibility failures are actionable and never expose credential material', async () => {
   const token = 'never-print-this-token';
 

@@ -285,3 +285,38 @@ Acquire credentials at the orchestration edge and inject the narrowest short-liv
 **Derived principle / standard change**
 
 RAIDER agnosticity reviews must reject provider-specific credential material in policy and reconciliation modules; security reviews must verify both installation scope and per-token permission narrowing.
+
+### LESSON-2026-009 — User-role metadata is not a universal token capability signal
+
+- **Date:** 2026-09-17
+- **Category:** integration-security
+- **Status:** prevention-added
+- **Related:** issue #25, AgenStart live validation
+
+**Context**
+
+AgenStart's first live zero-PAT governance run successfully created a repository-scoped GitHub App installation token with `Administration: write`, then failed during AppFactory preflight.
+
+**Failure / near miss**
+
+The workflow rejected a valid least-privilege installation token because `GET /repos/{owner}/{repo}` did not report `permissions.admin: true`. Token creation, repository checkout and authentication had all succeeded.
+
+**Root cause**
+
+The preflight treated user-role-shaped repository metadata as a universal proof of credential capability. GitHub App installation permissions are validated when the token is minted and are not represented consistently by the repository's user-role booleans.
+
+**Resolution**
+
+PAT-backed runs retain the repository admin-role check. The GitHub App workflow now passes a non-secret capability attestation only after `actions/create-github-app-token` successfully narrows the repository-scoped token to `permission-administration: write`; policy, reconciliation and the REST token remain provider-agnostic.
+
+**Prevention**
+
+A regression test models an installation token that can enumerate governance state while `permissions.admin` is false. Workflow contract tests require both the explicit Administration request and the matching capability attestation.
+
+**Generalized lesson**
+
+Authorization metadata shaped around one credential class must not be generalized to every credential provider.
+
+**Derived principle / standard change**
+
+RAIDER security preflights must establish capabilities at the boundary where the platform authoritatively validates them, then pass only a minimal non-secret proof into provider-agnostic execution.
