@@ -13,7 +13,7 @@ Consumer repositories never receive the GitHub App client secret, private key or
 
 ## Required configuration
 
-Create a D1 database and replace the placeholders in `wrangler.jsonc`.
+Production deployment is handled by the manually dispatched `Deploy Project token broker` GitHub Actions workflow. It discovers or creates the named D1 database, applies the schema, deploys the Worker, stores its secrets and verifies `/healthz`. Nothing deploys on a push, merge or release.
 
 Variables:
 
@@ -29,7 +29,28 @@ Secrets:
 
 The App private key is not required by this broker. Repository Governance continues to mint installation tokens through its separate workflow.
 
-## Deployment sequence
+## GitHub Actions deployment
+
+Create the `project-token-broker-production` GitHub environment, then configure:
+
+Repository or environment secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`;
+- `CLOUDFLARE_API_TOKEN` — account-scoped to the selected account with Workers Scripts Edit and D1 Edit;
+- `BROKER_GITHUB_CLIENT_SECRET`;
+- `BROKER_TOKEN_ENCRYPTION_KEY` — 32 random bytes encoded as base64url.
+
+Repository or environment variables:
+
+- `BROKER_GITHUB_CLIENT_ID`;
+- `BROKER_ALLOWED_JOB_WORKFLOW_REFS` — exact comma/newline-separated caller identities;
+- `BROKER_PUBLIC_BASE_URL` — optional on the first run. If omitted, the workflow adopts the URL returned by the first Workers deployment and immediately redeploys with it.
+
+Run **Actions → Deploy Project token broker → Run workflow**. Keep `apply_schema` enabled. Repeated runs reuse the named D1 database and converge the same Worker rather than creating duplicates.
+
+The workflow adopts the official Wrangler CLI and `cloudflare/wrangler-action`. The repository-specific layer is limited to validating configuration, resolving the named D1 resource and rendering an ephemeral config; the committed placeholder file is never modified by CI.
+
+## Local deployment fallback
 
 ```bash
 cd broker
