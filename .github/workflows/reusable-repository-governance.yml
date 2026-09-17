@@ -18,10 +18,23 @@ on:
         required: false
         type: string
         default: v1
+      authentication:
+        description: Credential source. Use token for the existing PAT flow or github-app for a short-lived installation token.
+        required: false
+        type: string
+        default: token
+      app_client_id:
+        description: GitHub App client ID. Required only when authentication is github-app.
+        required: false
+        type: string
+        default: ''
     secrets:
       governance_token:
-        description: Dedicated credential with Administration write access to the consumer repository.
-        required: true
+        description: Dedicated PAT with Administration write access. Required only when authentication is token.
+        required: false
+      app_private_key:
+        description: GitHub App private key. Required only when authentication is github-app.
+        required: false
 
 permissions:
   contents: read
@@ -35,6 +48,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Validate governance authentication
+        shell: bash
+        env:
+          AUTHENTICATION: ${{ inputs.authentication }}
+          APP_CLIENT_ID: ${{ inputs.app_client_id }}
+          APP_PRIVATE_KEY: ${{ secrets.app_private_key }}
+          GOVERNANCE_TOKEN: ${{ secrets.governance_token }}
+        run: |
+          case "$AUTHENTICATION" in
+            token)
+              if [[ -z "$GOVERNANCE_TOKEN" ]]; then
+                echo '::error title=Missing governance token::authentication=token requires the governance_token secret.'
+                exit 1
+              fi
+              ;;
+            github-app)
+              if [[ -z "$APP_CLIENT_ID" ]]; then
+                echo '::error title=Missing GitHub App client ID::authentication=github-app requires the app_client_id input.'
+                exit 1
+              fi
+              if [[ -z "$APP_PRIVATE_KEY" ]]; then
+                echo '::error title=Missing GitHub App private key::authentication=github-app requires the app_private_key secret.'
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error title=Invalid authentication mode::Expected token or github-app, received $AUTHENTICATION."
+              exit 1
+              ;;
+          esac
+
+      - name: Create repository-scoped GitHub App token
+        if: ${{ inputs.authentication == 'github-app' }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.app_private_key }}
+          permission-administration: write
+
       - name: Checkout trusted default branch
         uses: actions/checkout@v4
         with:
@@ -52,6 +105,6 @@ jobs:
       - name: Reconcile repository governance
         uses: ./.appfactory
         with:
-          governance-token: ${{ secrets.governance_token }}
+          governance-token: ${{ inputs.authentication == 'github-app' && steps.app-token.outputs.token || secrets.governance_token }}
           governance-mode: ${{ inputs.governance_mode }}
           config-path: ${{ inputs.config_path }}

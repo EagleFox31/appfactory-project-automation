@@ -250,3 +250,38 @@ An idempotent reconciler becomes operationally durable only when a safe, observa
 **Derived principle / standard change**
 
 RAIDER durability reviews must test both convergence behavior and the event model that detects future drift; automatic enforcement must remain opt-in and independently disableable.
+
+### LESSON-2026-008 — Authentication providers belong outside the reconciliation core
+
+- **Date:** 2026-09-17
+- **Category:** architecture-security
+- **Status:** prevention-added
+- **Related:** issue #25
+
+**Context**
+
+Repository Governance originally accepted a dedicated fine-grained PAT. The next onboarding path needed short-lived GitHub App installation tokens without changing policy or managed Ruleset identity.
+
+**Failure / near miss**
+
+Adding App ID, installation lookup and private-key handling to the Action entry point or REST client would have coupled every governance module to one credential provider and made PAT migration a policy change.
+
+**Root cause**
+
+Credential acquisition and credential consumption are different responsibilities. Treating both as generic "authentication" hides the trust boundary and encourages provider-specific state inside the engine.
+
+**Resolution**
+
+The reusable workflow now selects the provider and creates a repository-scoped installation token when requested. The unchanged Action receives only an opaque `governance-token`; policy, planning, reconciliation and transport remain provider-agnostic.
+
+**Prevention**
+
+Contract tests verify explicit provider selection, least-privilege token generation, PAT compatibility and the absence of GitHub App secrets or action references from core modules.
+
+**Generalized lesson**
+
+Acquire credentials at the orchestration edge and inject the narrowest short-lived capability token into the core.
+
+**Derived principle / standard change**
+
+RAIDER agnosticity reviews must reject provider-specific credential material in policy and reconciliation modules; security reviews must verify both installation scope and per-token permission narrowing.

@@ -37,3 +37,5 @@ The Action is designed so that:
 - Project, field and option IDs are resolved at runtime;
 - bootstrap operations are scoped to the configured Project owner/title and consuming repository;
 - malformed inputs and incompatible field types fail before silent semantic changes.
+
+GitHub App authentication keeps the App client ID in an Actions variable and the complete private key in an encrypted Actions secret. Installation tokens are generated inside the governance job, scoped to the current repository, limited to `Administration: write`, masked by the token action and revoked after the job. A GitHub App private key must never be committed or distributed to third-party consumers; public multi-tenant onboarding requires a hosted token broker owned by the App operator.

@@ -39,7 +39,8 @@ test('reusable governance execution is serialized and isolated from Project and 
   assert.match(reusable, /ref: \$\{\{ inputs\.appfactory_ref \}\}/);
   assert.match(reusable, /uses: \.\/\.appfactory/);
   assert.match(reusable, /governance-mode: \$\{\{ inputs\.governance_mode \}\}/);
-  assert.match(reusable, /governance-token: \$\{\{ secrets\.governance_token \}\}/);
+  assert.match(reusable, /inputs\.authentication == 'github-app'/);
+  assert.match(reusable, /steps\.app-token\.outputs\.token \|\| secrets\.governance_token/);
   assert.doesNotMatch(reusable, /PROJECT_TOKEN|release-please|reusable-release|pull_request_target/);
 });
 
