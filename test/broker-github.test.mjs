@@ -78,3 +78,21 @@ test('GitHub identity and repository checks bind numeric ids', async () => {
     (error) => error.code === 'repository_identity_changed'
   );
 });
+
+test('OAuth refresh rejects missing resource scopes and non-expiring tokens', async () => {
+  const request = {
+    clientId: 'oauth-client', clientSecret: 'test-secret', refreshToken: 'test-refresh',
+    requiredScopes: ['project', 'public_repo'], nowSeconds: 1000
+  };
+  await assert.rejects(refreshUserAccessToken({ ...request,
+    fetchImpl: async () => response({ access_token: 'test', refresh_token: 'test-refresh',
+      expires_in: 28800, refresh_token_expires_in: 100000, scope: 'public_repo' })
+  }), { code: 'oauth_scope_required' });
+  await assert.rejects(refreshUserAccessToken({ ...request,
+    fetchImpl: async () => response({ access_token: 'test', scope: 'project,public_repo' })
+  }), { code: 'token_expiration_required' });
+  await assert.rejects(refreshUserAccessToken({ ...request,
+    fetchImpl: async () => response({ access_token: 'test', refresh_token: 'test-refresh',
+      expires_in: 28801, refresh_token_expires_in: 100000, scope: 'project,public_repo' })
+  }), { code: 'invalid_github_token_response' });
+});

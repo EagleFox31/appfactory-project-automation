@@ -23,12 +23,13 @@ function httpsUrl(value, label) {
 
 export function normalizeProjectAuthentication(value) {
   const authentication = String(value ?? AUTHENTICATION_TOKEN).trim().toLowerCase();
+  if (authentication === 'broker-user') return AUTHENTICATION_BROKER;
   if ([AUTHENTICATION_TOKEN, AUTHENTICATION_BROKER].includes(authentication)) {
     return authentication;
   }
   throw new Error(
     `Invalid project authentication mode "${value}". ` +
-    `Expected ${AUTHENTICATION_TOKEN} or ${AUTHENTICATION_BROKER}.`
+    `Expected ${AUTHENTICATION_TOKEN} or ${AUTHENTICATION_BROKER} (alias: broker-user).`
   );
 }
 

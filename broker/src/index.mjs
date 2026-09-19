@@ -10,6 +10,8 @@ import {
 import { verifyGitHubActionsOidc } from './oidc.mjs';
 import {
   consumeOAuthState,
+  acquireRefreshLease,
+  releaseRefreshLease,
   createOAuthState,
   enforceExchangeRateLimit,
   loadAuthorization,
@@ -19,6 +21,29 @@ import {
 } from './storage.mjs';
 
 const ACCESS_TOKEN_REFRESH_MARGIN = 300;
+const STATE_COOKIE = '__Host-appfactory-state';
+
+function provider(env) {
+  const name = String(env.GITHUB_AUTH_PROVIDER ?? 'github-app');
+  if (!['github-app', 'oauth-app'].includes(name)) {
+    throw new BrokerError(500, 'broker_misconfigured', 'Unknown GitHub provider.');
+  }
+  return name;
+}
+
+function requiredScopes(env) {
+  return provider(env) === 'oauth-app' ? ['project', 'public_repo'] : [];
+}
+
+function authorizationKey(env, userId) {
+  return provider(env) === 'oauth-app'
+    ? `oauth-app:${configured(env, 'GITHUB_CLIENT_ID')}:${userId}`
+    : String(userId);
+}
+
+function stateCookie(state, maxAge = 600) {
+  return `${STATE_COOKIE}=${state}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+}
 
 function configured(env, name) {
   const value = String(env?.[name] ?? '').trim();
@@ -102,6 +127,9 @@ async function decryptedAuthorization(env, authorization) {
   if (!bundle?.accessToken || !bundle?.refreshToken) {
     throw new BrokerError(500, 'stored_authorization_invalid', 'Stored authorization is invalid.');
   }
+  if (requiredScopes(env).some((scope) => !bundle.scopes?.includes(scope))) {
+    throw new BrokerError(401, 'user_reauthorization_required', 'Stored OAuth permissions are insufficient.');
+  }
   return bundle;
 }
 
@@ -114,6 +142,7 @@ async function refreshAuthorization({ env, authorization, fetchImpl, nowSeconds 
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
     clientSecret: configured(env, 'GITHUB_CLIENT_SECRET'),
     refreshToken: current.refreshToken,
+    requiredScopes: requiredScopes(env),
     fetchImpl,
     nowSeconds
   });
@@ -139,24 +168,46 @@ async function refreshAuthorization({ env, authorization, fetchImpl, nowSeconds 
 }
 
 async function usableAuthorization({ env, userId, fetchImpl, nowSeconds, forceRefresh = false }) {
-  const authorization = await loadAuthorization(env.DB, userId);
+  const key = authorizationKey(env, userId);
+  const authorization = await loadAuthorization(env.DB, key);
   if (!forceRefresh && authorization.accessExpiresAt > nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
     return decryptedAuthorization(env, authorization);
   }
-  return refreshAuthorization({ env, authorization, fetchImpl, nowSeconds });
+  const leaseId = randomState();
+  if (!await acquireRefreshLease(env.DB, { key, leaseId, nowSeconds })) {
+    throw new BrokerError(409, 'authorization_refresh_conflict', 'Token refresh is already in progress.');
+  }
+  try {
+    const latest = await loadAuthorization(env.DB, key);
+    if (latest.version !== authorization.version && latest.accessExpiresAt > nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
+      return decryptedAuthorization(env, latest);
+    }
+    return await refreshAuthorization({ env, authorization: latest, fetchImpl, nowSeconds });
+  } finally {
+    await releaseRefreshLease(env.DB, { key, leaseId });
+  }
 }
 
 async function authorize(env, nowSeconds) {
   const state = randomState();
+  const codeVerifier = randomState();
+  const scopes = requiredScopes(env);
   await createOAuthState(env.DB, {
     stateHash: await sha256(state),
-    expiresAt: nowSeconds + 600
+    expiresAt: nowSeconds + 600,
+    codeVerifier
   });
-  return Response.redirect(authorizationUrl({
+  const location = authorizationUrl({
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
     redirectUri: callbackUrl(env),
-    state
-  }), 302);
+    state,
+    scopes: scopes.length ? [...scopes, 'offline_access'] : [],
+    codeChallenge: await sha256(codeVerifier)
+  });
+  return new Response(null, { status: 302, headers: {
+    Location: location, 'Set-Cookie': stateCookie(state),
+    'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'
+  } });
 }
 
 async function oauthCallback(request, env, fetchImpl, nowSeconds) {
@@ -164,24 +215,31 @@ async function oauthCallback(request, env, fetchImpl, nowSeconds) {
   const code = String(url.searchParams.get('code') ?? '').trim();
   const state = String(url.searchParams.get('state') ?? '').trim();
   if (!code || !state) throw new BrokerError(400, 'oauth_callback_invalid', 'OAuth callback is incomplete.');
-  await consumeOAuthState(env.DB, { stateHash: await sha256(state), nowSeconds });
+  const cookie = (request.headers.get('cookie') ?? '').split(';').map((part) => part.trim())
+    .find((part) => part.startsWith(`${STATE_COOKIE}=`))?.slice(STATE_COOKIE.length + 1);
+  if (!cookie || cookie !== state) throw new BrokerError(400, 'invalid_oauth_state', 'OAuth browser state does not match.');
+  const codeVerifier = await consumeOAuthState(env.DB, { stateHash: await sha256(state), nowSeconds });
+  if (!codeVerifier) throw new BrokerError(400, 'invalid_oauth_state', 'Restart OAuth authorization.');
 
   const tokens = await exchangeAuthorizationCode({
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
     clientSecret: configured(env, 'GITHUB_CLIENT_SECRET'),
     code,
     redirectUri: callbackUrl(env),
+    codeVerifier,
+    requiredScopes: requiredScopes(env),
     fetchImpl,
     nowSeconds
   });
   const user = await fetchAuthorizedUser({ token: tokens.accessToken, fetchImpl });
+  const key = authorizationKey(env, user.id);
   const encryptedTokens = await encryptTokenBundle({
     bundle: tokens,
-    context: encryptionContext(user.id),
+    context: encryptionContext(key),
     keyMaterial: configured(env, 'TOKEN_ENCRYPTION_KEY')
   });
   await saveAuthorization(env.DB, {
-    userId: user.id,
+    userId: key,
     login: user.login,
     encryptedTokens,
     accessExpiresAt: tokens.accessExpiresAt,
@@ -192,7 +250,9 @@ async function oauthCallback(request, env, fetchImpl, nowSeconds) {
     userId: user.id,
     outcome: 'success'
   });
-  return html('AppFactory authorization complete');
+  const response = html('AppFactory authorization complete');
+  response.headers.set('Set-Cookie', stateCookie('', 0));
+  return response;
 }
 
 async function projectToken(request, env, fetchImpl, nowSeconds) {

@@ -1,0 +1,25 @@
+name: Project broker validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Existing issue to reconcile; leave empty to resolve the existing Project.
+        required: false
+        type: string
+
+jobs:
+  validate-broker:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+    with:
+      authentication: github-app-user
+      broker_url: ${{ vars.APPFACTORY_PROJECT_BROKER_URL }}
+      broker_audience: appfactory-project-automation
+      appfactory_ref: 7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+      config_path: .github/project-config.json
+      issue_number: ${{ inputs.issue_number }}
