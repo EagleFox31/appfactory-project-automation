@@ -16,6 +16,7 @@ function jsonResponse(payload, status = 200) {
 
 test('project authentication remains token-backed by default', async () => {
   assert.equal(normalizeProjectAuthentication(), 'token');
+  assert.equal(normalizeProjectAuthentication('broker-user'), 'github-app-user');
   assert.equal(await resolveProjectToken({ token: 'legacy-token' }), 'legacy-token');
 });
 

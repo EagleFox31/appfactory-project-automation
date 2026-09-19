@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       authentication:
-        description: Credential source. Use token for the existing PAT flow or github-app-user for brokered user authorization.
+        description: Credential source. Use token for PAT or broker-user for brokered authorization; github-app-user remains a compatible alias.
         required: false
         type: string
         default: token
@@ -66,7 +66,7 @@ jobs:
                 exit 1
               fi
               ;;
-            github-app-user)
+            github-app-user|broker-user)
               if [[ -z "$BROKER_URL" ]]; then
                 echo '::error title=Missing token broker::authentication=github-app-user requires broker_url.'
                 exit 1
@@ -77,7 +77,7 @@ jobs:
               fi
               ;;
             *)
-              echo "::error title=Invalid authentication mode::Expected token or github-app-user, received $AUTHENTICATION."
+              echo "::error title=Invalid authentication mode::Expected token or github-app-user (alias broker-user), received $AUTHENTICATION."
               exit 1
               ;;
           esac
@@ -115,7 +115,7 @@ jobs:
           issue-number: ${{ inputs.issue_number }}
 
   sync-github-app-user:
-    if: ${{ inputs.authentication == 'github-app-user' }}
+    if: ${{ inputs.authentication == 'github-app-user' || inputs.authentication == 'broker-user' }}
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10

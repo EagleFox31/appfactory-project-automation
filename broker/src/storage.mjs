@@ -1,19 +1,37 @@
 import { BrokerError } from './errors.mjs';
 
-export async function createOAuthState(db, { stateHash, expiresAt }) {
+export async function createOAuthState(db, { stateHash, expiresAt, codeVerifier = null }) {
   await db.prepare(
-    `INSERT INTO oauth_states (state_hash, expires_at, created_at)
-     VALUES (?1, ?2, unixepoch())`
-  ).bind(stateHash, expiresAt).run();
+    `INSERT INTO oauth_states (state_hash, expires_at, created_at, code_verifier)
+     VALUES (?1, ?2, unixepoch(), ?3)`
+  ).bind(stateHash, expiresAt, codeVerifier).run();
 }
 
 export async function consumeOAuthState(db, { stateHash, nowSeconds }) {
   const row = await db.prepare(
     `DELETE FROM oauth_states
      WHERE state_hash = ?1 AND expires_at >= ?2
-     RETURNING state_hash`
+     RETURNING state_hash, code_verifier`
   ).bind(stateHash, nowSeconds).first();
   if (!row) throw new BrokerError(400, 'invalid_oauth_state', 'OAuth state is invalid or expired.');
+  return row.code_verifier;
+}
+
+export async function acquireRefreshLease(db, { key, leaseId, nowSeconds }) {
+  const row = await db.prepare(
+    `INSERT INTO authorization_refresh_locks (auth_key, lease_id, expires_at)
+     VALUES (?1, ?2, ?3)
+     ON CONFLICT(auth_key) DO UPDATE SET lease_id = excluded.lease_id,
+       expires_at = excluded.expires_at
+     WHERE authorization_refresh_locks.expires_at <= ?4
+     RETURNING lease_id`
+  ).bind(key, leaseId, nowSeconds + 90, nowSeconds).first();
+  return row?.lease_id === leaseId;
+}
+
+export async function releaseRefreshLease(db, { key, leaseId }) {
+  await db.prepare('DELETE FROM authorization_refresh_locks WHERE auth_key = ?1 AND lease_id = ?2')
+    .bind(key, leaseId).run();
 }
 
 export async function saveAuthorization(db, {

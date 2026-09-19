@@ -26,9 +26,9 @@ The capabilities are independent. A repository can adopt Project automation, gov
 
 Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair. Governance supports both the existing dedicated PAT and [short-lived GitHub App authentication](docs/github-app-onboarding.md).
 
-Project automation remains backward compatible with `PROJECT_TOKEN`. For user-owned Projects, AppFactory also defines a [zero-PAT GitHub App user flow](docs/project-github-app-user-onboarding.md) that exchanges a job-specific GitHub Actions OIDC proof through a compatible hosted broker. The broker, not the consumer repository, owns refresh-token storage and rotation.
+Project automation remains backward compatible with `PROJECT_TOKEN`. The [zero-PAT broker flow](docs/project-github-app-user-onboarding.md) uses a separate OAuth App for personal Projects; the earlier GitHub App account-Projects permission assumption was incorrect. The broker stores encrypted refresh tokens and exchanges signed GitHub Actions OIDC proofs for expiring user tokens. Two owner-triggered AgenStart runs passed without PAT; keep the production event workflow on `PROJECT_TOKEN` until contributor and bot paths are supported and verified.
 
-The reference Cloudflare Worker implementation lives in [`broker/`](broker/README.md). It verifies GitHub Actions OIDC identity, encrypts rotating GitHub App user credentials in D1 and restricts exchanges to exact reusable-workflow identities.
+The reference Cloudflare Worker implementation lives in [`broker/`](broker/README.md). It verifies GitHub Actions OIDC identity, encrypts rotating user credentials in D1 and restricts exchanges to exact reusable-workflow identities.
 
 ## Why use it?
 

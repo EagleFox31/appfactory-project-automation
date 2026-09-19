@@ -44,6 +44,7 @@ export function validateWorkflowClaims({
   claims,
   audience,
   allowedWorkflowRefs,
+  allowedDelegatedWorkflowRefs = [],
   repository,
   nowSeconds = Math.floor(Date.now() / 1000),
   clockSkewSeconds = 30
@@ -82,11 +83,17 @@ export function validateWorkflowClaims({
   const repositoryOwnerId = integerClaim(claims.repository_owner_id, 'repository_owner_id');
   const actorId = integerClaim(claims.actor_id, 'actor_id');
   if (repositoryOwnerId !== actorId) {
-    throw new BrokerError(
-      403,
-      'personal_owner_required',
-      'Initial broker policy only authorizes owner-triggered workflows in personal repositories.'
-    );
+    const callerRef = String(claims.workflow_ref ?? '').trim();
+    const ref = String(claims.ref ?? '').trim();
+    const eventName = String(claims.event_name ?? '').trim();
+    const delegated = (allowedDelegatedWorkflowRefs ?? []).includes(callerRef);
+    const trustedCaller = callerRef.startsWith(`${normalizedRepository}/.github/workflows/`)
+      && ref.startsWith('refs/heads/') && callerRef.endsWith(`@${ref}`);
+    if (!delegated || !trustedCaller || !['issues', 'pull_request_target'].includes(eventName)
+        || claims.repository_visibility !== 'public') {
+      throw new BrokerError(403, 'personal_owner_required',
+        'Only trusted default-branch Issue and pull-request workflows may use the owner authorization.');
+    }
   }
 
   return {
@@ -95,6 +102,7 @@ export function validateWorkflowClaims({
     repository: normalizedRepository,
     repositoryId,
     repositoryOwnerId,
+    authorizationUserId: repositoryOwnerId,
     workflowRef,
     runId: String(claims.run_id ?? '').trim()
   };
@@ -131,6 +139,7 @@ export async function verifyGitHubActionsOidc({
   token,
   audience,
   allowedWorkflowRefs,
+  allowedDelegatedWorkflowRefs = [],
   repository,
   fetchImpl = fetch,
   cryptoImpl = crypto,
@@ -167,6 +176,7 @@ export async function verifyGitHubActionsOidc({
     claims: parsed.claims,
     audience,
     allowedWorkflowRefs,
+    allowedDelegatedWorkflowRefs,
     repository,
     nowSeconds
   });

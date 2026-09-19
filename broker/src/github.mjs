@@ -16,7 +16,7 @@ function expiry(nowSeconds, expiresIn, label) {
   return nowSeconds + seconds;
 }
 
-function normalizeTokenResponse(payload, nowSeconds) {
+function normalizeTokenResponse(payload, nowSeconds, requiredScopes = []) {
   if (payload?.error) {
     throw new BrokerError(401, 'github_authorization_failed', 'GitHub rejected the user authorization.');
   }
@@ -28,19 +28,28 @@ function normalizeTokenResponse(payload, nowSeconds) {
   const refreshToken = required(
     payload?.refresh_token,
     'token_expiration_required',
-    'GitHub App user-token expiration must be enabled.'
+    'GitHub token expiration must be enabled.'
   );
+  const scopes = String(payload?.scope ?? '').split(/[ ,]+/u).filter(Boolean);
+  if (requiredScopes.some((scope) => !scopes.includes(scope))) {
+    throw new BrokerError(403, 'oauth_scope_required', 'Required OAuth permissions were not granted.');
+  }
+  if (Number(payload.expires_in) > 28_800) {
+    throw new BrokerError(502, 'invalid_github_token_response', 'Access token lifetime exceeds eight hours.');
+  }
   return {
     accessToken,
     refreshToken,
     accessExpiresAt: expiry(nowSeconds, payload.expires_in, 'Access token'),
-    refreshExpiresAt: expiry(nowSeconds, payload.refresh_token_expires_in, 'Refresh token')
+    refreshExpiresAt: expiry(nowSeconds, payload.refresh_token_expires_in, 'Refresh token'),
+    ...(requiredScopes.length ? { scopes } : {})
   };
 }
 
-async function oauthTokenRequest(parameters, fetchImpl, nowSeconds) {
+async function oauthTokenRequest(parameters, fetchImpl, nowSeconds, requiredScopes) {
   const response = await fetchImpl('https://github.com/login/oauth/access_token', {
     method: 'POST',
+    signal: AbortSignal.timeout(15_000),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -51,14 +60,19 @@ async function oauthTokenRequest(parameters, fetchImpl, nowSeconds) {
   if (!response.ok) {
     throw new BrokerError(502, 'github_oauth_unavailable', 'GitHub OAuth exchange is unavailable.');
   }
-  return normalizeTokenResponse(await response.json(), nowSeconds);
+  return normalizeTokenResponse(await response.json(), nowSeconds, requiredScopes);
 }
 
-export function authorizationUrl({ clientId, redirectUri, state }) {
+export function authorizationUrl({ clientId, redirectUri, state, scopes = [], codeChallenge }) {
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('state', state);
+  if (scopes.length) url.searchParams.set('scope', scopes.join(' '));
+  if (codeChallenge) {
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+  }
   return url.toString();
 }
 
@@ -67,6 +81,8 @@ export function exchangeAuthorizationCode({
   clientSecret,
   code,
   redirectUri,
+  codeVerifier,
+  requiredScopes = [],
   fetchImpl = fetch,
   nowSeconds = Math.floor(Date.now() / 1000)
 }) {
@@ -74,14 +90,16 @@ export function exchangeAuthorizationCode({
     client_id: clientId,
     client_secret: clientSecret,
     code,
-    redirect_uri: redirectUri
-  }, fetchImpl, nowSeconds);
+    redirect_uri: redirectUri,
+    ...(codeVerifier ? { code_verifier: codeVerifier } : {})
+  }, fetchImpl, nowSeconds, requiredScopes);
 }
 
 export function refreshUserAccessToken({
   clientId,
   clientSecret,
   refreshToken,
+  requiredScopes = [],
   fetchImpl = fetch,
   nowSeconds = Math.floor(Date.now() / 1000)
 }) {
@@ -90,7 +108,7 @@ export function refreshUserAccessToken({
     client_secret: clientSecret,
     grant_type: 'refresh_token',
     refresh_token: refreshToken
-  }, fetchImpl, nowSeconds);
+  }, fetchImpl, nowSeconds, requiredScopes);
 }
 
 async function githubApi(path, token, fetchImpl) {

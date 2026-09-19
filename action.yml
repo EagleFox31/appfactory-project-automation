@@ -9,12 +9,12 @@ inputs:
     default: ""
 
   project-authentication:
-    description: Project credential source. Use token for the existing PAT flow or github-app-user for OIDC exchange through an AppFactory token broker.
+    description: Project credential source. Use token for PAT or broker-user for OIDC exchange; github-app-user remains a compatible alias.
     required: false
     default: token
 
   project-token-broker-url:
-    description: HTTPS exchange endpoint for github-app-user authentication. The broker must validate the GitHub Actions OIDC identity before returning a short-lived GitHub App user token.
+    description: HTTPS broker endpoint. The broker validates GitHub Actions OIDC before returning an expiring user token.
     required: false
     default: ""
 
