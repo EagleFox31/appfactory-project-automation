@@ -22,6 +22,7 @@ Variables:
 - `PUBLIC_BASE_URL` — deployed Worker HTTPS origin;
 - `BROKER_AUDIENCE` — keep `appfactory-project-automation` unless every caller and broker setting changes together;
 - `ALLOWED_JOB_WORKFLOW_REFS` — comma/newline-separated exact `job_workflow_ref` identities. Use immutable AppFactory commit refs during pre-release validation, then the protected `v1` tag.
+- `DELEGATED_CALLER_WORKFLOW_REFS` — optional, empty by default. For each public personal repository whose contributor events may use the owner's authorization, list the exact trusted caller `workflow_ref`, such as `EagleFox31/AgenStart/.github/workflows/project-automation.yml@refs/heads/main`. Only `issues` and `pull_request_target` runs from that same branch qualify. Review the caller before enabling this because its trusted code receives the owner's short-lived token.
 
 Secrets:
 
@@ -70,4 +71,10 @@ before applying `0002`; never blindly apply an ALTER twice.
 - `GET /callback` — consumes the OAuth state and stores rotated tokens encrypted;
 - `POST /v1/github/user-token` — OIDC exchange used by AppFactory workflows.
 
-The first release supports repositories owned by the authorized personal account and requires the workflow actor to be that owner. Organization/member delegation is intentionally rejected until its separate policy and audit model are specified.
+By default the workflow actor must be the authorized personal account owner.
+An explicit `DELEGATED_CALLER_WORKFLOW_REFS` allowlist also permits contributor
+actors on `issues` and `pull_request_target` in public, owner-controlled
+repositories when the caller workflow and branch match exactly. The exchange
+uses the owner's authorization but audits the triggering actor. Other events,
+including Dependabot's `dynamic` OIDC event, remain rejected. Keep the PAT
+consumer until this opt-in policy passes a real non-owner event test.

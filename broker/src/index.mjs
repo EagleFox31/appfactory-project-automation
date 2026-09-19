@@ -77,6 +77,11 @@ function allowedWorkflowRefs(env) {
   return values;
 }
 
+function allowedDelegatedWorkflowRefs(env) {
+  return String(env.DELEGATED_CALLER_WORKFLOW_REFS ?? '')
+    .split(/[\n,]/u).map((value) => value.trim()).filter(Boolean);
+}
+
 function json(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -267,6 +272,8 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     token: bearerToken(request),
     audience: configured(env, 'BROKER_AUDIENCE'),
     allowedWorkflowRefs: allowedWorkflowRefs(env),
+    allowedDelegatedWorkflowRefs: provider(env) === 'oauth-app'
+      ? allowedDelegatedWorkflowRefs(env) : [],
     repository,
     fetchImpl,
     nowSeconds
@@ -278,7 +285,7 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
 
   let tokens = await usableAuthorization({
     env,
-    userId: identity.actorId,
+    userId: identity.authorizationUserId,
     fetchImpl,
     nowSeconds
   });
@@ -294,7 +301,7 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     if (!(error instanceof BrokerError) || error.code !== 'github_user_token_invalid') throw error;
     tokens = await usableAuthorization({
       env,
-      userId: identity.actorId,
+      userId: identity.authorizationUserId,
       fetchImpl,
       nowSeconds,
       forceRefresh: true

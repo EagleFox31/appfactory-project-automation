@@ -6,7 +6,7 @@ without `PROJECT_TOKEN` (runs 35433489255 and 35433548102). The first run
 resolved personal Project #2 and synchronized one open Issue with no new item.
 
 PR #44 is merged at `7ff298087308d7ddcc8e507d8eb9adb56c2e2158`; its CI passed.
-AgenStart still uses `PROJECT_TOKEN` for its personal Project owned by EagleFox31.
+AgenStart's production event workflow still uses `PROJECT_TOKEN` for its personal Project owned by EagleFox31.
 The GitHub App settings inspected do not offer an account-level Projects permission.
 The earlier instruction to grant that permission is incorrect. Issuing a GitHub App
 user token does not prove access to this Project.
@@ -33,9 +33,10 @@ Before rollout:
 - Test a manual owner-triggered workflow without PAT against the existing Project
   twice, compare Project/item identities, and verify refresh without logging tokens.
 - Retain production event workflows and PROJECT_TOKEN until all actors and secret
-  references are supported. The current broker rejects contributor/bot actors.
+  references are supported. An exact-caller allowlist can permit public Issue
+  and pull-request events, but it is off by default and not live-validated.
 
-Local validation: 132 tests pass on Node 24.19.0 with
+Local validation: 133 tests pass on Node 24 with
 `node --test --test-isolation=none`. This includes SQLite-backed storage tests
 and mocked OAuth/OIDC exchange and refresh; it does not prove a real Project update.
 

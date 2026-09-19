@@ -114,7 +114,8 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
     GITHUB_AUTH_PROVIDER: authProvider,
     GITHUB_CLIENT_ID: 'test-client', GITHUB_CLIENT_SECRET: 'test-secret',
     TOKEN_ENCRYPTION_KEY: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
-    BROKER_AUDIENCE: 'appfactory-project-automation', ALLOWED_JOB_WORKFLOW_REFS: workflowRef
+    BROKER_AUDIENCE: 'appfactory-project-automation', ALLOWED_JOB_WORKFLOW_REFS: workflowRef,
+    DELEGATED_CALLER_WORKFLOW_REFS: 'owner/repo/.github/workflows/project.yml@refs/heads/main'
   };
   const broker = createBroker({
     now: () => now,
@@ -169,12 +170,13 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
     await assert.rejects(loadAuthorization(db, '42'), { code: 'user_authorization_required' });
   }
 
-  async function exchange() {
+  async function exchange(overrides = {}) {
     const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const unsigned = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({
       iss: 'https://token.actions.githubusercontent.com', aud: env.BROKER_AUDIENCE,
       exp: now + 60, iat: now, nbf: now, repository: 'owner/repo', repository_id: '100',
-      repository_owner_id: '42', actor_id: '42', actor: 'owner', job_workflow_ref: workflowRef, run_id: '123'
+      repository_owner_id: '42', actor_id: '42', actor: 'owner', job_workflow_ref: workflowRef,
+      run_id: '123', ...overrides
     })}`;
     const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', keys.privateKey, Buffer.from(unsigned));
     return broker.fetch(new Request('https://auth.example/v1/github/user-token', {
@@ -193,10 +195,21 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
   assert.deepEqual(await second.json(), { token: 'test-access-refreshed', expires_at: new Date(2000 * 1000).toISOString() });
   assert.equal(refreshes, 1);
   assert.equal((await loadAuthorization(db, key)).version, 2);
+  if (authProvider === 'oauth-app') {
+    const delegated = await exchange({ actor_id: '77', actor: 'contributor',
+      event_name: 'issues', ref: 'refs/heads/main', repository_visibility: 'public',
+      workflow_ref: env.DELEGATED_CALLER_WORKFLOW_REFS });
+    assert.equal(delegated.status, 200);
+    assert.equal((await delegated.json()).token, 'test-access-refreshed');
+  }
   const events = db.sqlite.prepare('SELECT event_type FROM security_events ORDER BY id').all();
   assert.deepEqual(events.map((row) => row.event_type), [
-    'user_authorized', 'project_token_exchanged', 'project_token_exchanged'
+    'user_authorized', 'project_token_exchanged', 'project_token_exchanged',
+    ...(authProvider === 'oauth-app' ? ['project_token_exchanged'] : [])
   ]);
+  if (authProvider === 'oauth-app') {
+    assert.equal(db.sqlite.prepare('SELECT user_id FROM security_events ORDER BY id DESC LIMIT 1').get().user_id, '77');
+  }
 });
 }
 

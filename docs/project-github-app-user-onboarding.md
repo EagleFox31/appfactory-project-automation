@@ -42,12 +42,16 @@ The calling job grants `id-token: write` because GitHub requires that permission
 
 ## Migration from `PROJECT_TOKEN`
 
-The bundled broker currently accepts only personal repositories where the workflow
-actor is the repository owner. Issue and pull-request events from contributors or
-bots are rejected with `personal_owner_required`. A successful owner-triggered
-manual run does not prove those existing event-driven workflows can be migrated.
-Keep their current authentication until an explicit delegation policy is implemented
-and validated; do not silently skip contributor events to claim a zero-PAT rollout.
+The bundled broker accepts owner-triggered personal repositories by default.
+Contributor actors on `issues` and `pull_request_target` can be permitted only
+after the operator explicitly allows the exact caller `workflow_ref` on its
+default branch with `DELEGATED_CALLER_WORKFLOW_REFS`. The OIDC proof must bind
+the public repository, actor, event, branch and immutable reusable workflow.
+Dependabot's `dynamic` event remains rejected. Bot-triggered events need
+their own live validation before migration. A successful
+owner-triggered manual run does not prove the event-driven workflows can be
+migrated. Keep their current authentication until a real non-owner event passes;
+do not silently skip contributor events to claim a zero-PAT rollout.
 
 Start with a separate manual workflow, leaving the existing workflow in place.
 The [manual validation example](../examples/project-broker-validation.yml) pins both

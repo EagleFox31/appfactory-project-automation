@@ -70,6 +70,7 @@ test('OIDC verification checks GitHub signature and returns immutable workflow i
     repository: 'EagleFox31/AgenStart',
     repositoryId: '1355701149',
     repositoryOwnerId: '86088743',
+    authorizationUserId: '86088743',
     workflowRef,
     runId: '35207656246'
   });
@@ -135,6 +136,33 @@ test('OIDC claims reject another audience, workflow, repository or actor', () =>
     () => validateWorkflowClaims({ ...base, claims: claims({ actor_id: '7' }) }),
     (error) => error.code === 'personal_owner_required'
   );
+});
+
+test('non-owner actors require a public repository and exact trusted event caller', () => {
+  const caller = 'EagleFox31/AgenStart/.github/workflows/project-automation.yml@refs/heads/main';
+  const base = {
+    claims: claims({ actor_id: '77', actor: 'contributor', event_name: 'issues',
+      workflow_ref: caller, ref: 'refs/heads/main', repository_visibility: 'public' }),
+    audience, allowedWorkflowRefs: [workflowRef], repository: 'EagleFox31/AgenStart',
+    nowSeconds: 1_100
+  };
+  assert.throws(() => validateWorkflowClaims(base), { code: 'personal_owner_required' });
+  const delegated = { ...base, allowedDelegatedWorkflowRefs: [caller] };
+  assert.equal(validateWorkflowClaims(delegated).authorizationUserId, '86088743');
+  assert.equal(validateWorkflowClaims({ ...delegated, claims: {
+    ...base.claims, event_name: 'pull_request_target'
+  } }).actorId, '77');
+  for (const change of [
+    { event_name: 'workflow_dispatch' }, { event_name: 'pull_request' },
+    { event_name: 'dynamic' }, { ref: 'refs/heads/feature' },
+    { repository_visibility: 'private' },
+    { workflow_ref: 'EagleFox31/AgenStart/.github/workflows/other.yml@refs/heads/main' },
+    { workflow_ref: 'another/repo/.github/workflows/project-automation.yml@refs/heads/main' }
+  ]) {
+    assert.throws(() => validateWorkflowClaims({ ...delegated,
+      claims: { ...base.claims, ...change }
+    }), { code: 'personal_owner_required' });
+  }
 });
 
 test('OIDC claims reject expired proofs before repository authorization', () => {
