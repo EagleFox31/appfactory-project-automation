@@ -1,8 +1,7 @@
 CREATE TABLE IF NOT EXISTS oauth_states (
   state_hash TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  code_verifier TEXT
+  created_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
@@ -36,9 +35,3 @@ CREATE TABLE IF NOT EXISTS security_events (
 
 CREATE INDEX IF NOT EXISTS idx_security_events_occurred_at
   ON security_events (occurred_at);
-
-CREATE TABLE IF NOT EXISTS authorization_refresh_locks (
-  auth_key TEXT PRIMARY KEY,
-  lease_id TEXT NOT NULL,
-  expires_at INTEGER NOT NULL
-);

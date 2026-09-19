@@ -13,7 +13,8 @@
     {
       "binding": "DB",
       "database_name": "appfactory-project-token-broker",
-      "database_id": "REPLACE_AFTER_D1_CREATE"
+      "database_id": "REPLACE_AFTER_D1_CREATE",
+      "migrations_dir": "migrations"
     }
   ]
 }

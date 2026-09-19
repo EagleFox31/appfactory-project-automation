@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { base64UrlEncode } from '../broker/src/encoding.mjs';
+import { base64UrlDecode, base64UrlEncode } from '../broker/src/encoding.mjs';
 import { decryptTokenBundle, encryptTokenBundle, sha256 } from '../broker/src/crypto.mjs';
 
 const keyMaterial = base64UrlEncode(Uint8Array.from({ length: 32 }, (_, index) => index + 1));
@@ -40,7 +40,10 @@ test('broker token encryption rejects another user context and tampering', async
       keyMaterial
     })
   );
-  const tampered = `${ciphertext.slice(0, -1)}${ciphertext.endsWith('A') ? 'B' : 'A'}`;
+  const [version, nonce, payload] = ciphertext.split('.');
+  const changed = base64UrlDecode(payload);
+  changed[0] ^= 1;
+  const tampered = `${version}.${nonce}.${base64UrlEncode(changed)}`;
   await assert.rejects(
     decryptTokenBundle({
       ciphertext: tampered,
