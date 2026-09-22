@@ -17,7 +17,8 @@ EagleFox31/appfactory-project-automation@v1
     ├── checkout exact release SHA
     ├── dotnet publish
     ├── versioned ZIP
-    ├── SHA-256 checksum
+    ├── optional standalone EXE
+    ├── SHA-256 checksums
     ├── Actions artifact
     └── GitHub Release assets
 ```
@@ -56,9 +57,10 @@ When merging the Release PR creates a GitHub Release, the workflow:
 3. validates the consumer-provided project path, product name, runtime and configuration;
 4. runs `dotnet publish` with `ContinuousIntegrationBuild=true` and the semantic release version;
 5. creates `<Product>-v<Version>-<RID>.zip`;
-6. creates `<Product>-v<Version>-<RID>.sha256.txt`;
-7. uploads both files as a GitHub Actions artifact;
-8. attaches both files to the GitHub Release.
+6. when `standalone-executable` is enabled, performs a second self-contained single-file publish and creates `<Product>-v<Version>-<RID>.exe`;
+7. creates SHA-256 checksum files for each published binary asset;
+8. uploads all generated files as a GitHub Actions artifact;
+9. attaches all generated files to the GitHub Release.
 
 The workflow does not accept arbitrary extra command-line arguments. Product-specific build customization should live in the product's MSBuild project/props rather than being passed as untrusted shell text.
 
@@ -72,6 +74,7 @@ The workflow does not accept arbitrary extra command-line arguments. Product-spe
 | `dotnet-version` | no | `10.0.x` | SDK installed on the release runner |
 | `configuration` | no | `Release` | MSBuild configuration |
 | `self-contained` | no | `true` | Include the .NET runtime in the published application |
+| `standalone-executable` | no | `false` | Also publish a self-contained single-file `.exe` asset |
 | `target-branch` | no | `main` | Release Please target branch |
 | `release-as` | no | empty | One-time semantic version override |
 
@@ -138,8 +141,8 @@ Permissions can only be maintained or reduced through a reusable-workflow chain;
 
 The .NET desktop workflow deliberately builds from `release-sha`, not from the latest state of `main`. This ties every uploaded binary to the exact commit that Release Please tagged.
 
-The generated SHA-256 file lets users or later installer tooling verify the downloaded ZIP before execution.
+The generated SHA-256 files let users or later installer tooling verify the ZIP and optional standalone executable before execution.
 
 ## Current scope
 
-The first artifact builder targets .NET desktop products on a Windows runner. The release orchestration itself is language-agnostic. Future AppFactory builders can add Node/Electron, Tauri, macOS notarization, MSIX/MSI/EXE packaging and code signing without changing the product-side release contract.
+The first artifact builder targets .NET desktop products on a Windows runner. The release orchestration itself is language-agnostic. Future AppFactory builders can add Node/Electron, Tauri, macOS notarization, MSIX/MSI packaging and code signing without changing the product-side release contract.
