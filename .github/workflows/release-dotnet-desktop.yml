@@ -31,6 +31,11 @@ on:
         required: false
         type: boolean
         default: true
+      standalone-executable:
+        description: Also publish a self-contained single-file executable release asset.
+        required: false
+        type: boolean
+        default: false
       target-branch:
         description: Branch maintained by Release Please.
         required: false
@@ -58,6 +63,9 @@ on:
       asset_name:
         description: Versioned ZIP asset uploaded when a release was created.
         value: ${{ jobs.build.outputs.asset_name }}
+      executable_name:
+        description: Versioned standalone executable asset when standalone-executable is enabled.
+        value: ${{ jobs.build.outputs.executable_name }}
 
 permissions:
   contents: write
@@ -87,6 +95,7 @@ jobs:
       contents: write
     outputs:
       asset_name: ${{ steps.package.outputs.asset_name }}
+      executable_name: ${{ steps.package.outputs.executable_name }}
 
     steps:
       - name: Validate release inputs
@@ -172,6 +181,49 @@ jobs:
             throw "dotnet publish failed with exit code $LASTEXITCODE."
           }
 
+      - name: Publish standalone executable
+        if: inputs.standalone-executable
+        shell: pwsh
+        env:
+          PROJECT_PATH: ${{ inputs.project-path }}
+          RUNTIME: ${{ inputs.runtime }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $workspace = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $project = [System.IO.Path]::GetFullPath((Join-Path $workspace $env:PROJECT_PATH))
+          $standaloneDir = Join-Path $env:RUNNER_TEMP 'appfactory-standalone'
+          if (Test-Path $standaloneDir) {
+            Remove-Item $standaloneDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $standaloneDir | Out-Null
+
+          $arguments = @(
+            'publish',
+            $project,
+            '--configuration', $env:CONFIGURATION,
+            '--runtime', $env:RUNTIME,
+            '--self-contained', 'true',
+            '--output', $standaloneDir,
+            '-p:ContinuousIntegrationBuild=true',
+            "-p:Version=$env:VERSION",
+            '-p:PublishSingleFile=true',
+            '-p:IncludeNativeLibrariesForSelfExtract=true',
+            '-p:EnableCompressionInSingleFile=true'
+          )
+
+          & dotnet @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet standalone publish failed with exit code $LASTEXITCODE."
+          }
+
+          $executables = @(Get-ChildItem -LiteralPath $standaloneDir -File -Filter '*.exe')
+          if ($executables.Count -ne 1) {
+            throw "Expected exactly one standalone executable, found $($executables.Count)."
+          }
+
       - name: Package release asset and checksum
         id: package
         shell: pwsh
@@ -179,6 +231,7 @@ jobs:
           PRODUCT_NAME: ${{ inputs.product-name }}
           RUNTIME: ${{ inputs.runtime }}
           VERSION: ${{ needs.release.outputs.version }}
+          STANDALONE_EXECUTABLE: ${{ inputs.standalone-executable }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -198,8 +251,29 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
+          $executableName = ''
+          $executableChecksumName = ''
+          if ($env:STANDALONE_EXECUTABLE -eq 'true') {
+            $standaloneDir = Join-Path $env:RUNNER_TEMP 'appfactory-standalone'
+            $executables = @(Get-ChildItem -LiteralPath $standaloneDir -File -Filter '*.exe')
+            if ($executables.Count -ne 1) {
+              throw "Expected exactly one standalone executable, found $($executables.Count)."
+            }
+
+            $executableName = "$env:PRODUCT_NAME-v$env:VERSION-$env:RUNTIME.exe"
+            $executableChecksumName = "$env:PRODUCT_NAME-v$env:VERSION-$env:RUNTIME.exe.sha256.txt"
+            $executablePath = Join-Path $artifactDir $executableName
+            $executableChecksumPath = Join-Path $artifactDir $executableChecksumName
+
+            Copy-Item -LiteralPath $executables[0].FullName -Destination $executablePath
+            $executableHash = (Get-FileHash -LiteralPath $executablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$executableHash  $executableName" | Set-Content -LiteralPath $executableChecksumPath -Encoding ascii
+          }
+
           "asset_name=$assetName" >> $env:GITHUB_OUTPUT
           "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          "executable_name=$executableName" >> $env:GITHUB_OUTPUT
+          "executable_checksum_name=$executableChecksumName" >> $env:GITHUB_OUTPUT
           "artifact_dir=$artifactDir" >> $env:GITHUB_OUTPUT
 
       - name: Upload workflow artifact
@@ -218,8 +292,16 @@ jobs:
           ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
           ASSET_NAME: ${{ steps.package.outputs.asset_name }}
           CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
+          EXECUTABLE_NAME: ${{ steps.package.outputs.executable_name }}
+          EXECUTABLE_CHECKSUM_NAME: ${{ steps.package.outputs.executable_checksum_name }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $asset = Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME
-          $checksum = Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME
-          gh release upload $env:TAG_NAME $asset $checksum --repo $env:GITHUB_REPOSITORY --clobber
+          $files = @(
+            (Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME)
+          )
+          if (-not [string]::IsNullOrWhiteSpace($env:EXECUTABLE_NAME)) {
+            $files += Join-Path $env:ARTIFACT_DIR $env:EXECUTABLE_NAME
+            $files += Join-Path $env:ARTIFACT_DIR $env:EXECUTABLE_CHECKSUM_NAME
+          }
+          gh release upload $env:TAG_NAME @files --repo $env:GITHUB_REPOSITORY --clobber

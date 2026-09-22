@@ -55,6 +55,16 @@ test('dotnet release creates a versioned zip, checksum and GitHub release assets
   assert.match(dotnetRelease, /gh release upload/);
 });
 
+test('dotnet release can publish a standalone executable without changing the default contract', () => {
+  assert.match(dotnetRelease, /standalone-executable:/);
+  assert.match(dotnetRelease, /default: false/);
+  assert.match(dotnetRelease, /PublishSingleFile=true/);
+  assert.match(dotnetRelease, /IncludeNativeLibrariesForSelfExtract=true/);
+  assert.match(dotnetRelease, /\.exe"/);
+  assert.match(dotnetRelease, /executable_name:/);
+  assert.match(dotnetExample, /standalone-executable: true/);
+});
+
 test('dotnet release does not expose arbitrary command argument inputs', () => {
   assert.doesNotMatch(dotnetRelease, /extra-args/);
   assert.doesNotMatch(dotnetRelease, /publish-args/);
