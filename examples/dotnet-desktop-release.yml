@@ -24,6 +24,7 @@ jobs:
       runtime: win-x64
       dotnet-version: 10.0.x
       self-contained: true
+      standalone-executable: true
       release-as: ${{ inputs.release_as }}
     secrets:
       release_token: ${{ secrets.APPFACTORY_RELEASE_TOKEN }}
