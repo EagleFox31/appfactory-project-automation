@@ -273,7 +273,12 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
       : [])
   ]);
   if (authProvider === 'oauth-app') {
-    assert.equal(db.sqlite.prepare('SELECT user_id FROM security_events ORDER BY id DESC LIMIT 1').get().user_id, '77');
+    assert.equal(
+      db.sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM security_events WHERE event_type = 'project_token_exchanged' AND user_id = '77'"
+      ).get().count,
+      1
+    );
   }
 });
 }
