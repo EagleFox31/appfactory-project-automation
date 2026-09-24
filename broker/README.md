@@ -21,13 +21,13 @@ Create the protected GitHub environment `project-token-broker-production` and co
 Repository/environment secrets:
 
 - `CLOUDFLARE_API_TOKEN` — Cloudflare token with Workers Scripts Edit and D1 Edit for the selected account;
-- `CLOUDFLARE_ACCOUNT_ID`;
-- `BROKER_GITHUB_CLIENT_SECRET`;
-- `BROKER_TOKEN_ENCRYPTION_KEY` — 32 random bytes encoded as base64url.
+- `BROKER_GITHUB_CLIENT_SECRET` — required only when explicitly synchronizing Worker secrets;
+- `BROKER_TOKEN_ENCRYPTION_KEY` — required only when explicitly synchronizing Worker secrets. **Never generate a replacement key for an existing D1 authorization store** unless you intentionally invalidate those encrypted authorizations.
 
 Repository/environment variables:
 
-- `BROKER_GITHUB_CLIENT_ID`;
+- `CLOUDFLARE_ACCOUNT_ID`;
+- `BROKER_GITHUB_CLIENT_ID` — required only when explicitly synchronizing Worker secrets;
 - `BROKER_ALLOWED_JOB_WORKFLOW_REFS` — comma/newline-separated exact reusable-workflow identities;
 - `BROKER_PUBLIC_BASE_URL` — optional. Leave empty on the first deployment to adopt the generated `workers.dev` origin;
 - `BROKER_GITHUB_AUTH_PROVIDER` — optional; defaults to `oauth-app`;
@@ -39,6 +39,8 @@ The deployed Worker receives `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `TOK
 
 Run **Actions → Deploy Project token broker → Run workflow** with `apply_migrations` enabled.
 
+For an existing production broker, leave `sync_worker_secrets` **disabled**. Wrangler preserves the Worker secrets already stored in Cloudflare. Enable that option only for a new broker or an intentional OAuth/encryption-secret rotation after all three replacement values have been staged in GitHub.
+
 The workflow:
 
 1. validates every required GitHub/Cloudflare setting before remote mutation;
@@ -46,9 +48,10 @@ The workflow:
 3. refuses to replay migrations over an existing broker schema that has no Wrangler `d1_migrations` history;
 4. lists and applies only pending versioned D1 migrations;
 5. verifies the PKCE/refresh-lock schema;
-6. deploys with `cloudflare/wrangler-action@v4`;
-7. adopts the first `workers.dev` URL when no public origin is configured, then redeploys with the real callback origin;
-8. verifies `/healthz` and writes the authorization/callback/exchange URLs to the job summary.
+6. deploys with `cloudflare/wrangler-action@v4`, preserving existing Cloudflare Worker secrets by default;
+7. optionally synchronizes the OAuth/encryption secrets only when `sync_worker_secrets` is enabled;
+8. adopts the first `workers.dev` URL when no public origin is configured, then redeploys with the real callback origin;
+9. verifies `/healthz` and writes the authorization/callback/exchange URLs to the job summary.
 
 Cloudflare D1 records applied migration names in `d1_migrations`. `schema.sql` remains a current-schema reference for tests; it is not the production upgrade mechanism.
 
