@@ -25,7 +25,8 @@ The repository-owned deployment contract lives in `broker/wrangler.jsonc`:
 - Project auth provider: `oauth-app`;
 - OIDC audience: `appfactory-project-automation`;
 - reusable workflow allowlist: the currently validated immutable AppFactory runtime;
-- delegated caller allowlist: the isolated AgenStart `[broker-test]` workflow.
+- delegated caller allowlist: the isolated AgenStart `[broker-test]` workflow;
+- organization owner actor mapping: `Trigenys:EagleFox31`, so Trigenys-owned repositories can use the same human OAuth authorization without pretending the organization ID is a user ID.
 
 The following values remain **Cloudflare Worker secrets** and are never committed to GitHub:
 
@@ -70,8 +71,8 @@ After deployment:
 
 1. register a separate OAuth App with the exact callback URL `<PUBLIC_BASE_URL>/callback`, without wildcard matching;
 2. keep expiring access tokens enabled; the broker also requests `offline_access` and rejects non-expiring responses;
-3. authorize `project` and `public_repo` through OAuth consent. These scopes are broader than one Project/repository; do not substitute private-repository `repo` access without a separate review;
-4. visit `<PUBLIC_BASE_URL>/authorize` and approve once;
+3. for public repositories, authorize `project` and `public_repo` through `<PUBLIC_BASE_URL>/authorize`;
+4. private repositories require an explicit one-time upgrade at `<PUBLIC_BASE_URL>/authorize?repository_access=private`, which requests `project repo offline_access`. The broker never requests private-repository access silently;
 5. set consumer variable `APPFACTORY_PROJECT_BROKER_URL` to `<PUBLIC_BASE_URL>/v1/github/user-token`;
 6. migrate one consumer and validate existing Project resolution before deleting `PROJECT_TOKEN`.
 
@@ -96,6 +97,14 @@ before applying `0002`; never blindly apply an ALTER twice.
 By default the workflow actor must be the authorized personal account owner.
 That owner path is production-validated for automatic `issues` events on
 AgenStart and AgenFetch without `PROJECT_TOKEN`.
+
+Organization-owned repositories use an explicit `ORGANIZATION_AUTHORIZATION_ACTORS`
+mapping. The current production mapping is `Trigenys:EagleFox31`. The signed
+GitHub OIDC claims must identify both that repository owner and that actor; the
+OAuth token is then loaded for the actor, and GitHub's repository API still
+verifies the repository and owner numeric IDs before a token is returned.
+Private organization repositories additionally require the explicit private
+OAuth consent described above. Other organization actors fail closed.
 
 An explicit `DELEGATED_CALLER_WORKFLOW_REFS` allowlist can also permit
 contributor actors on `issues` and `pull_request_target` in public,

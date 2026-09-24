@@ -40,6 +40,13 @@ test('native Cloudflare broker config requires existing Worker secrets without s
   assert.equal('TOKEN_ENCRYPTION_KEY' in wrangler.vars, false);
 });
 
+test('native broker config binds Trigenys to the explicit owner actor', () => {
+  assert.equal(
+    wrangler.vars.ORGANIZATION_AUTHORIZATION_ACTORS,
+    'Trigenys:EagleFox31'
+  );
+});
+
 test('native Cloudflare broker config pins current OIDC trust boundaries', () => {
   assert.equal(
     wrangler.vars.ALLOWED_JOB_WORKFLOW_REFS,

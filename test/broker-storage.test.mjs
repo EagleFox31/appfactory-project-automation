@@ -45,8 +45,13 @@ test('broker schema can be reapplied without removing existing authorizations', 
 
 test('OAuth state is consumed once and expired states cannot authorize', async (t) => {
   const db = database(t);
-  await createOAuthState(db, { stateHash: 'valid-hash', expiresAt: 1600 });
-  await consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 });
+  await createOAuthState(db, {
+    stateHash: 'valid-hash', expiresAt: 1600, codeVerifier: 'verifier', repositoryAccess: 'private'
+  });
+  assert.deepEqual(
+    await consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 }),
+    { codeVerifier: 'verifier', repositoryAccess: 'private' }
+  );
   await assert.rejects(consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 }),
     { code: 'invalid_oauth_state' });
   await createOAuthState(db, { stateHash: 'expired-hash', expiresAt: 999 });
@@ -103,6 +108,7 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
   let now = 1000;
   let refreshes = 0;
   let authorizationChallenge;
+  let oauthScopes = 'project,public_repo';
   const workflowRef = 'owner/automation/.github/workflows/reusable.yml@0123456789';
   const keys = await crypto.subtle.generateKey({
     name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048,
@@ -115,7 +121,8 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
     GITHUB_CLIENT_ID: 'test-client', GITHUB_CLIENT_SECRET: 'test-secret',
     TOKEN_ENCRYPTION_KEY: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),
     BROKER_AUDIENCE: 'appfactory-project-automation', ALLOWED_JOB_WORKFLOW_REFS: workflowRef,
-    DELEGATED_CALLER_WORKFLOW_REFS: 'owner/repo/.github/workflows/project.yml@refs/heads/main'
+    DELEGATED_CALLER_WORKFLOW_REFS: 'owner/repo/.github/workflows/project.yml@refs/heads/main',
+    ORGANIZATION_AUTHORIZATION_ACTORS: 'Trigenys:owner'
   };
   const broker = createBroker({
     now: () => now,
@@ -131,7 +138,7 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
           assert.equal(challenge, authorizationChallenge);
         }
         return Response.json({
-          scope: 'project,public_repo',
+          scope: oauthScopes,
           access_token: refreshes ? 'test-access-refreshed' : 'test-access-initial',
           refresh_token: refreshes ? 'test-refresh-rotated' : 'test-refresh-initial',
           expires_in: 600, refresh_token_expires_in: 10000
@@ -142,6 +149,10 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
         assert.equal(options.headers.Authorization,
           `Bearer ${refreshes ? 'test-access-refreshed' : 'test-access-initial'}`);
         return Response.json({ id: 100, owner: { id: 42 } });
+      }
+      if (url === 'https://api.github.com/repos/Trigenys/private-service') {
+        assert.equal(options.headers.Authorization, 'Bearer test-access-refreshed');
+        return Response.json({ id: 200, owner: { id: 328842096 } });
       }
       if (url === 'https://token.actions.githubusercontent.com/.well-known/openid-configuration') {
         return Response.json({ issuer: 'https://token.actions.githubusercontent.com',
@@ -182,7 +193,7 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
     return broker.fetch(new Request('https://auth.example/v1/github/user-token', {
       method: 'POST', headers: { 'Content-Type': 'application/json',
         Authorization: `Bearer ${unsigned}.${Buffer.from(signature).toString('base64url')}` },
-      body: JSON.stringify({ repository: 'owner/repo' })
+      body: JSON.stringify({ repository: overrides.repository ?? 'owner/repo' })
     }), env);
   }
   const first = await exchange();
@@ -202,13 +213,72 @@ test(`${authProvider} broker authorizes, exchanges a signed OIDC proof, and pers
     assert.equal(delegated.status, 200);
     assert.equal((await delegated.json()).token, 'test-access-refreshed');
   }
+  if (authProvider === 'oauth-app') {
+    const privateClaims = {
+      repository: 'Trigenys/private-service',
+      repository_id: '200',
+      repository_owner: 'Trigenys',
+      repository_owner_id: '328842096',
+      actor_id: '42',
+      actor: 'owner',
+      repository_visibility: 'private'
+    };
+
+    const beforePrivateConsent = await exchange(privateClaims);
+    assert.equal(beforePrivateConsent.status, 401);
+    assert.deepEqual(await beforePrivateConsent.json(), {
+      error: 'user_reauthorization_required'
+    });
+
+    const privateRedirect = await broker.fetch(
+      new Request('https://auth.example/authorize?repository_access=private'),
+      env
+    );
+    const privateAuthorizationUrl = new URL(privateRedirect.headers.get('location'));
+    assert.equal(
+      privateAuthorizationUrl.searchParams.get('scope'),
+      'project repo offline_access'
+    );
+    authorizationChallenge = privateAuthorizationUrl.searchParams.get('code_challenge');
+    oauthScopes = 'project,repo';
+    const privateState = privateAuthorizationUrl.searchParams.get('state');
+    const privateCookie = privateRedirect.headers.get('set-cookie').split(';')[0];
+    const privateCallbackUrl =
+      `https://auth.example/callback?code=private-code&state=${privateState}`;
+    const privateCallback = new Request(privateCallbackUrl, {
+      headers: { cookie: privateCookie }
+    });
+    assert.equal((await broker.fetch(privateCallback, env)).status, 200);
+
+    const privateExchange = await exchange(privateClaims);
+    assert.equal(privateExchange.status, 200);
+    assert.equal((await privateExchange.json()).token, 'test-access-refreshed');
+
+    const publicAfterUpgrade = await exchange();
+    assert.equal(publicAfterUpgrade.status, 200);
+  }
+
   const events = db.sqlite.prepare('SELECT event_type FROM security_events ORDER BY id').all();
   assert.deepEqual(events.map((row) => row.event_type), [
-    'user_authorized', 'project_token_exchanged', 'project_token_exchanged',
-    ...(authProvider === 'oauth-app' ? ['project_token_exchanged'] : [])
+    'user_authorized',
+    'project_token_exchanged',
+    'project_token_exchanged',
+    ...(authProvider === 'oauth-app'
+      ? [
+          'project_token_exchanged',
+          'user_authorized',
+          'project_token_exchanged',
+          'project_token_exchanged'
+        ]
+      : [])
   ]);
   if (authProvider === 'oauth-app') {
-    assert.equal(db.sqlite.prepare('SELECT user_id FROM security_events ORDER BY id DESC LIMIT 1').get().user_id, '77');
+    assert.equal(
+      db.sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM security_events WHERE event_type = 'project_token_exchanged' AND user_id = '77'"
+      ).get().count,
+      1
+    );
   }
 });
 }
@@ -231,7 +301,10 @@ test('versioned migrations preserve legacy authorizations and produce the curren
   sqlite.exec(readFileSync(new URL('../broker/migrations/0001_initial.sql', import.meta.url), 'utf8'));
   sqlite.exec("INSERT INTO user_authorizations VALUES ('42', 'owner', 'legacy-ciphertext', 2000, 5000, 1, 1000)");
   sqlite.exec(readFileSync(new URL('../broker/migrations/0002_oauth_pkce_refresh.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../broker/migrations/0003_repository_access_scope.sql', import.meta.url), 'utf8'));
   assert.equal(sqlite.prepare('SELECT encrypted_tokens FROM user_authorizations').get().encrypted_tokens, 'legacy-ciphertext');
-  assert.ok(sqlite.prepare('PRAGMA table_info(oauth_states)').all().some((column) => column.name === 'code_verifier'));
+  const oauthColumns = sqlite.prepare('PRAGMA table_info(oauth_states)').all();
+  assert.ok(oauthColumns.some((column) => column.name === 'code_verifier'));
+  assert.ok(oauthColumns.some((column) => column.name === 'repository_access'));
   assert.doesNotThrow(() => sqlite.prepare('SELECT * FROM authorization_refresh_locks').all());
 });

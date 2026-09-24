@@ -1,20 +1,29 @@
 import { BrokerError } from './errors.mjs';
 
-export async function createOAuthState(db, { stateHash, expiresAt, codeVerifier = null }) {
+export async function createOAuthState(db, {
+  stateHash,
+  expiresAt,
+  codeVerifier = null,
+  repositoryAccess = 'public'
+}) {
   await db.prepare(
-    `INSERT INTO oauth_states (state_hash, expires_at, created_at, code_verifier)
-     VALUES (?1, ?2, unixepoch(), ?3)`
-  ).bind(stateHash, expiresAt, codeVerifier).run();
+    `INSERT INTO oauth_states (
+       state_hash, expires_at, created_at, code_verifier, repository_access
+     ) VALUES (?1, ?2, unixepoch(), ?3, ?4)`
+  ).bind(stateHash, expiresAt, codeVerifier, repositoryAccess).run();
 }
 
 export async function consumeOAuthState(db, { stateHash, nowSeconds }) {
   const row = await db.prepare(
     `DELETE FROM oauth_states
      WHERE state_hash = ?1 AND expires_at >= ?2
-     RETURNING state_hash, code_verifier`
+     RETURNING state_hash, code_verifier, repository_access`
   ).bind(stateHash, nowSeconds).first();
   if (!row) throw new BrokerError(400, 'invalid_oauth_state', 'OAuth state is invalid or expired.');
-  return row.code_verifier;
+  return {
+    codeVerifier: row.code_verifier,
+    repositoryAccess: String(row.repository_access ?? 'public')
+  };
 }
 
 export async function acquireRefreshLease(db, { key, leaseId, nowSeconds }) {

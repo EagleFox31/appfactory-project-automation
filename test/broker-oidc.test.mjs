@@ -23,6 +23,7 @@ function claims(overrides = {}) {
     repository_owner_id: '86088743',
     actor_id: '86088743',
     actor: 'EagleFox31',
+    repository_visibility: 'public',
     run_id: '35207656246',
     job_workflow_ref: workflowRef,
     ...overrides
@@ -70,6 +71,7 @@ test('OIDC verification checks GitHub signature and returns immutable workflow i
     repository: 'EagleFox31/AgenStart',
     repositoryId: '1355701149',
     repositoryOwnerId: '86088743',
+    repositoryVisibility: 'public',
     authorizationUserId: '86088743',
     workflowRef,
     runId: '35207656246'
@@ -136,6 +138,47 @@ test('OIDC claims reject another audience, workflow, repository or actor', () =>
     () => validateWorkflowClaims({ ...base, claims: claims({ actor_id: '7' }) }),
     (error) => error.code === 'personal_owner_required'
   );
+});
+
+test('mapped organization owner uses the authorized human identity for private repositories', () => {
+  const organizationClaims = claims({
+    repository: 'Trigenys/private-service',
+    repository_id: '200',
+    repository_owner: 'Trigenys',
+    repository_owner_id: '328842096',
+    actor_id: '86088743',
+    actor: 'EagleFox31',
+    repository_visibility: 'private'
+  });
+  const identity = validateWorkflowClaims({
+    claims: organizationClaims,
+    audience,
+    allowedWorkflowRefs: [workflowRef],
+    organizationAuthorizationActors: { trigenys: 'EagleFox31' },
+    repository: 'Trigenys/private-service',
+    nowSeconds: 1_100
+  });
+  assert.equal(identity.authorizationUserId, '86088743');
+  assert.equal(identity.repositoryOwnerId, '328842096');
+  assert.equal(identity.repositoryVisibility, 'private');
+
+  assert.throws(() => validateWorkflowClaims({
+    claims: { ...organizationClaims, actor_id: '77', actor: 'other-member' },
+    audience,
+    allowedWorkflowRefs: [workflowRef],
+    organizationAuthorizationActors: { trigenys: 'EagleFox31' },
+    repository: 'Trigenys/private-service',
+    nowSeconds: 1_100
+  }), { code: 'personal_owner_required' });
+
+  assert.throws(() => validateWorkflowClaims({
+    claims: organizationClaims,
+    audience,
+    allowedWorkflowRefs: [workflowRef],
+    organizationAuthorizationActors: {},
+    repository: 'Trigenys/private-service',
+    nowSeconds: 1_100
+  }), { code: 'personal_owner_required' });
 });
 
 test('non-owner actors require a public repository and exact trusted event caller', () => {

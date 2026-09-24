@@ -45,6 +45,7 @@ export function validateWorkflowClaims({
   audience,
   allowedWorkflowRefs,
   allowedDelegatedWorkflowRefs = [],
+  organizationAuthorizationActors = {},
   repository,
   nowSeconds = Math.floor(Date.now() / 1000),
   clockSkewSeconds = 30
@@ -82,7 +83,25 @@ export function validateWorkflowClaims({
   const repositoryId = integerClaim(claims.repository_id, 'repository_id');
   const repositoryOwnerId = integerClaim(claims.repository_owner_id, 'repository_owner_id');
   const actorId = integerClaim(claims.actor_id, 'actor_id');
-  if (repositoryOwnerId !== actorId) {
+  const actor = String(claims.actor ?? '').trim();
+  const repositoryOwner = String(
+    claims.repository_owner ?? normalizedRepository.split('/')[0]
+  ).trim();
+  const repositoryVisibility = String(claims.repository_visibility ?? 'public').trim() || 'public';
+  const mappedOrganizationActor = String(
+    organizationAuthorizationActors?.[repositoryOwner.toLowerCase()] ?? ''
+  ).trim();
+
+  let authorizationUserId;
+  if (repositoryOwnerId === actorId) {
+    authorizationUserId = repositoryOwnerId;
+  } else if (mappedOrganizationActor) {
+    if (mappedOrganizationActor.toLowerCase() !== actor.toLowerCase()) {
+      throw new BrokerError(403, 'personal_owner_required',
+        'This organization repository requires its explicitly authorized owner actor.');
+    }
+    authorizationUserId = actorId;
+  } else {
     const callerRef = String(claims.workflow_ref ?? '').trim();
     const ref = String(claims.ref ?? '').trim();
     const eventName = String(claims.event_name ?? '').trim();
@@ -90,19 +109,21 @@ export function validateWorkflowClaims({
     const trustedCaller = callerRef.startsWith(`${normalizedRepository}/.github/workflows/`)
       && ref.startsWith('refs/heads/') && callerRef.endsWith(`@${ref}`);
     if (!delegated || !trustedCaller || !['issues', 'pull_request_target'].includes(eventName)
-        || claims.repository_visibility !== 'public') {
+        || repositoryVisibility !== 'public') {
       throw new BrokerError(403, 'personal_owner_required',
-        'Only trusted default-branch Issue and pull-request workflows may use the owner authorization.');
+        'Only an authorized repository owner or trusted public default-branch workflow may use the owner authorization.');
     }
+    authorizationUserId = repositoryOwnerId;
   }
 
   return {
     actorId,
-    actor: String(claims.actor ?? '').trim(),
+    actor,
     repository: normalizedRepository,
     repositoryId,
     repositoryOwnerId,
-    authorizationUserId: repositoryOwnerId,
+    repositoryVisibility,
+    authorizationUserId,
     workflowRef,
     runId: String(claims.run_id ?? '').trim()
   };
@@ -140,6 +161,7 @@ export async function verifyGitHubActionsOidc({
   audience,
   allowedWorkflowRefs,
   allowedDelegatedWorkflowRefs = [],
+  organizationAuthorizationActors = {},
   repository,
   fetchImpl = fetch,
   cryptoImpl = crypto,
@@ -177,6 +199,7 @@ export async function verifyGitHubActionsOidc({
     audience,
     allowedWorkflowRefs,
     allowedDelegatedWorkflowRefs,
+    organizationAuthorizationActors,
     repository,
     nowSeconds
   });
