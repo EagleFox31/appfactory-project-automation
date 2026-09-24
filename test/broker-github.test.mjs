@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   authorizationUrl,
   fetchAuthorizedUser,
+  hasRequiredScopes,
   refreshUserAccessToken,
   verifyRepositoryAccess
 } from '../broker/src/github.mjs';
@@ -77,6 +78,12 @@ test('GitHub identity and repository checks bind numeric ids', async () => {
     }),
     (error) => error.code === 'repository_identity_changed'
   );
+});
+
+test('repo scope satisfies public_repo but public_repo cannot satisfy private repo access', () => {
+  assert.equal(hasRequiredScopes(['project', 'repo'], ['project', 'public_repo']), true);
+  assert.equal(hasRequiredScopes(['project', 'repo'], ['project', 'repo']), true);
+  assert.equal(hasRequiredScopes(['project', 'public_repo'], ['project', 'repo']), false);
 });
 
 test('OAuth refresh rejects missing resource scopes and non-expiring tokens', async () => {
