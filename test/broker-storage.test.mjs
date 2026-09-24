@@ -45,8 +45,13 @@ test('broker schema can be reapplied without removing existing authorizations', 
 
 test('OAuth state is consumed once and expired states cannot authorize', async (t) => {
   const db = database(t);
-  await createOAuthState(db, { stateHash: 'valid-hash', expiresAt: 1600 });
-  await consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 });
+  await createOAuthState(db, {
+    stateHash: 'valid-hash', expiresAt: 1600, codeVerifier: 'verifier', repositoryAccess: 'private'
+  });
+  assert.deepEqual(
+    await consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 }),
+    { codeVerifier: 'verifier', repositoryAccess: 'private' }
+  );
   await assert.rejects(consumeOAuthState(db, { stateHash: 'valid-hash', nowSeconds: 1000 }),
     { code: 'invalid_oauth_state' });
   await createOAuthState(db, { stateHash: 'expired-hash', expiresAt: 999 });
@@ -231,7 +236,10 @@ test('versioned migrations preserve legacy authorizations and produce the curren
   sqlite.exec(readFileSync(new URL('../broker/migrations/0001_initial.sql', import.meta.url), 'utf8'));
   sqlite.exec("INSERT INTO user_authorizations VALUES ('42', 'owner', 'legacy-ciphertext', 2000, 5000, 1, 1000)");
   sqlite.exec(readFileSync(new URL('../broker/migrations/0002_oauth_pkce_refresh.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../broker/migrations/0003_repository_access_scope.sql', import.meta.url), 'utf8'));
   assert.equal(sqlite.prepare('SELECT encrypted_tokens FROM user_authorizations').get().encrypted_tokens, 'legacy-ciphertext');
-  assert.ok(sqlite.prepare('PRAGMA table_info(oauth_states)').all().some((column) => column.name === 'code_verifier'));
+  const oauthColumns = sqlite.prepare('PRAGMA table_info(oauth_states)').all();
+  assert.ok(oauthColumns.some((column) => column.name === 'code_verifier'));
+  assert.ok(oauthColumns.some((column) => column.name === 'repository_access'));
   assert.doesNotThrow(() => sqlite.prepare('SELECT * FROM authorization_refresh_locks').all());
 });
