@@ -2,7 +2,8 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   state_hash TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  code_verifier TEXT
+  code_verifier TEXT,
+  repository_access TEXT NOT NULL DEFAULT 'public'
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_states_expires_at
