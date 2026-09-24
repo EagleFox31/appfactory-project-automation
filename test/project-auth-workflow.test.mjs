@@ -29,7 +29,7 @@ test('OIDC permission is isolated to the brokered Project job', () => {
 test('default consumer example is zero-PAT and uses the production broker contract', () => {
   assert.match(example, /id-token: write/);
   assert.match(example, /appfactory-project-token-broker\.lawrynnjennifer\.workers\.dev\/v1\/github\/user-token/);
-  assert.match(example, /authentication: github-app-user/);
+  assert.match(example, /authentication: broker-user/);
   assert.doesNotMatch(example, /secrets:|PROJECT_TOKEN|APP_PRIVATE_KEY|CLIENT_SECRET/);
   assert.equal(example, brokerExample);
 });
