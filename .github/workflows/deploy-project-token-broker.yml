@@ -1,0 +1,257 @@
+name: Deploy Project token broker
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_migrations:
+        description: Apply pending D1 migrations before deploying
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appfactory-project-token-broker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy broker to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: project-token-broker-production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+      TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+      CONFIGURED_PUBLIC_BASE_URL: ${{ vars.BROKER_PUBLIC_BASE_URL }}
+      CONFIGURED_GITHUB_AUTH_PROVIDER: ${{ vars.BROKER_GITHUB_AUTH_PROVIDER }}
+      BROKER_ALLOWED_JOB_WORKFLOW_REFS: ${{ vars.BROKER_ALLOWED_JOB_WORKFLOW_REFS }}
+      BROKER_DELEGATED_CALLER_WORKFLOW_REFS: ${{ vars.BROKER_DELEGATED_CALLER_WORKFLOW_REFS }}
+      DATABASE_NAME: appfactory-project-token-broker
+      CONFIG_PATH: wrangler.deploy.jsonc
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in \
+            CLOUDFLARE_API_TOKEN \
+            CLOUDFLARE_ACCOUNT_ID \
+            GITHUB_CLIENT_ID \
+            GITHUB_CLIENT_SECRET \
+            TOKEN_ENCRYPTION_KEY \
+            BROKER_ALLOWED_JOB_WORKFLOW_REFS
+          do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error title=Missing broker deployment configuration::Set: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          auth_provider="${CONFIGURED_GITHUB_AUTH_PROVIDER:-oauth-app}"
+          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-https://bootstrap.invalid}"
+
+          cd broker
+          BROKER_PUBLIC_BASE_URL="${public_base_url}" \
+          BROKER_GITHUB_AUTH_PROVIDER="${auth_provider}" \
+            node scripts/render-wrangler-config.mjs \
+              prepare wrangler.jsonc "${CONFIG_PATH}"
+
+      - name: Reuse or create D1 database
+        id: d1
+        shell: bash
+        run: |
+          cd broker
+
+          databases="$(npx --yes wrangler@4 d1 list --json --config "${CONFIG_PATH}")"
+          matches="$(jq -c --arg name "${DATABASE_NAME}" '[.[] | select(.name == $name)]' <<< "${databases}")"
+          count="$(jq 'length' <<< "${matches}")"
+
+          if (( count > 1 )); then
+            echo "::error title=Ambiguous D1 database::More than one D1 database is named ${DATABASE_NAME}."
+            exit 1
+          fi
+
+          if (( count == 0 )); then
+            npx --yes wrangler@4 d1 create "${DATABASE_NAME}" \
+              --binding DB \
+              --update-config \
+              --config "${CONFIG_PATH}"
+
+            databases="$(npx --yes wrangler@4 d1 list --json --config "${CONFIG_PATH}")"
+            matches="$(jq -c --arg name "${DATABASE_NAME}" '[.[] | select(.name == $name)]' <<< "${databases}")"
+            count="$(jq 'length' <<< "${matches}")"
+            echo "created=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "created=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if (( count != 1 )); then
+            echo "::error title=D1 resolution failed::Could not resolve exactly one ${DATABASE_NAME} database."
+            exit 1
+          fi
+
+          database_id="$(jq -r '.[0].uuid' <<< "${matches}")"
+          node scripts/render-wrangler-config.mjs \
+            bind-d1 "${CONFIG_PATH}" "${database_id}"
+
+      - name: Guard D1 migration history
+        if: ${{ inputs.apply_migrations }}
+        shell: bash
+        run: |
+          cd broker
+          state="$(
+            npx --yes wrangler@4 d1 execute DB \
+              --remote \
+              --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('oauth_states','d1_migrations');" \
+              --json \
+              --config "${CONFIG_PATH}"
+          )"
+
+          has_schema="$(jq '[.[].results[]? | select(.name == "oauth_states")] | length' <<< "${state}")"
+          has_history="$(jq '[.[].results[]? | select(.name == "d1_migrations")] | length' <<< "${state}")"
+
+          if (( has_schema > 0 && has_history == 0 )); then
+            echo '::error title=Unmanaged D1 schema detected::The database already contains broker tables but has no Wrangler migration history. Reconcile d1_migrations explicitly before enabling automated migrations; refusing to replay ALTER migrations blindly.'
+            exit 1
+          fi
+
+          npx --yes wrangler@4 d1 migrations list DB \
+            --remote \
+            --config "${CONFIG_PATH}"
+
+      - name: Apply D1 migrations
+        if: ${{ inputs.apply_migrations }}
+        shell: bash
+        run: |
+          cd broker
+          npx --yes wrangler@4 d1 migrations apply DB \
+            --remote \
+            --config "${CONFIG_PATH}"
+
+      - name: Verify D1 schema
+        shell: bash
+        run: |
+          cd broker
+          columns="$(
+            npx --yes wrangler@4 d1 execute DB \
+              --remote \
+              --command "PRAGMA table_info(oauth_states);" \
+              --json \
+              --config "${CONFIG_PATH}"
+          )"
+          tables="$(
+            npx --yes wrangler@4 d1 execute DB \
+              --remote \
+              --command "SELECT name FROM sqlite_master WHERE type='table' AND name='authorization_refresh_locks';" \
+              --json \
+              --config "${CONFIG_PATH}"
+          )"
+
+          jq -e '[.[].results[]? | select(.name == "code_verifier")] | length == 1' <<< "${columns}" >/dev/null
+          jq -e '[.[].results[]? | select(.name == "authorization_refresh_locks")] | length == 1' <<< "${tables}" >/dev/null
+
+      - name: Deploy broker
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+          secrets: |
+            GITHUB_CLIENT_ID
+            GITHUB_CLIENT_SECRET
+            TOKEN_ENCRYPTION_KEY
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+
+      - name: Adopt discovered workers.dev URL
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          if [[ -z "${DEPLOYMENT_URL}" ]]; then
+            echo '::error title=Missing deployment URL::Wrangler did not report the deployed Worker URL.'
+            exit 1
+          fi
+
+          cd broker
+          node scripts/render-wrangler-config.mjs \
+            set-public-base-url "${CONFIG_PATH}" "${DEPLOYMENT_URL}"
+
+      - name: Redeploy with discovered public URL
+        id: redeploy
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+          secrets: |
+            GITHUB_CLIENT_ID
+            GITHUB_CLIENT_SECRET
+            TOKEN_ENCRYPTION_KEY
+        env:
+          GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
+
+      - name: Verify broker health
+        env:
+          INITIAL_DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          FINAL_DEPLOYMENT_URL: ${{ steps.redeploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-${FINAL_DEPLOYMENT_URL:-${INITIAL_DEPLOYMENT_URL}}}"
+          public_base_url="${public_base_url%/}"
+
+          if [[ -z "${public_base_url}" ]]; then
+            echo '::error title=Missing broker URL::Unable to determine the deployed Worker URL.'
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --retry 4 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            "${public_base_url}/healthz"
+
+          echo "BROKER_PUBLIC_BASE_URL=${public_base_url}" >> "${GITHUB_ENV}"
+
+      - name: Write deployment summary
+        shell: bash
+        run: |
+          {
+            echo '## Project token broker deployed'
+            echo
+            echo "- Worker: ${BROKER_PUBLIC_BASE_URL}"
+            echo "- D1 created during this run: ${{ steps.d1.outputs.created }}"
+            echo "- Migrations requested: ${{ inputs.apply_migrations }}"
+            echo "- Health: ${BROKER_PUBLIC_BASE_URL}/healthz"
+            echo "- Authorization: ${BROKER_PUBLIC_BASE_URL}/authorize"
+            echo "- OAuth callback: ${BROKER_PUBLIC_BASE_URL}/callback"
+            echo "- Exchange: ${BROKER_PUBLIC_BASE_URL}/v1/github/user-token"
+          } >> "${GITHUB_STEP_SUMMARY}"
