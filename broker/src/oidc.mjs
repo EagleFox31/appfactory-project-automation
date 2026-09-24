@@ -45,7 +45,7 @@ export function validateWorkflowClaims({
   audience,
   allowedWorkflowRefs,
   allowedDelegatedWorkflowRefs = [],
-  organizationAuthorizationUsers = {},
+  organizationAuthorizationActors = {},
   repository,
   nowSeconds = Math.floor(Date.now() / 1000),
   clockSkewSeconds = 30
@@ -83,15 +83,23 @@ export function validateWorkflowClaims({
   const repositoryId = integerClaim(claims.repository_id, 'repository_id');
   const repositoryOwnerId = integerClaim(claims.repository_owner_id, 'repository_owner_id');
   const actorId = integerClaim(claims.actor_id, 'actor_id');
+  const actor = String(claims.actor ?? '').trim();
+  const repositoryOwner = String(
+    claims.repository_owner ?? normalizedRepository.split('/')[0]
+  ).trim();
   const repositoryVisibility = String(claims.repository_visibility ?? 'public').trim() || 'public';
-  const mappedOrganizationUserId = String(
-    organizationAuthorizationUsers?.[repositoryOwnerId] ?? ''
+  const mappedOrganizationActor = String(
+    organizationAuthorizationActors?.[repositoryOwner.toLowerCase()] ?? ''
   ).trim();
 
   let authorizationUserId;
   if (repositoryOwnerId === actorId) {
     authorizationUserId = repositoryOwnerId;
-  } else if (mappedOrganizationUserId && mappedOrganizationUserId === actorId) {
+  } else if (mappedOrganizationActor) {
+    if (mappedOrganizationActor.toLowerCase() !== actor.toLowerCase()) {
+      throw new BrokerError(403, 'personal_owner_required',
+        'This organization repository requires its explicitly authorized owner actor.');
+    }
     authorizationUserId = actorId;
   } else {
     const callerRef = String(claims.workflow_ref ?? '').trim();
@@ -105,12 +113,12 @@ export function validateWorkflowClaims({
       throw new BrokerError(403, 'personal_owner_required',
         'Only an authorized repository owner or trusted public default-branch workflow may use the owner authorization.');
     }
-    authorizationUserId = mappedOrganizationUserId || repositoryOwnerId;
+    authorizationUserId = repositoryOwnerId;
   }
 
   return {
     actorId,
-    actor: String(claims.actor ?? '').trim(),
+    actor,
     repository: normalizedRepository,
     repositoryId,
     repositoryOwnerId,
@@ -153,7 +161,7 @@ export async function verifyGitHubActionsOidc({
   audience,
   allowedWorkflowRefs,
   allowedDelegatedWorkflowRefs = [],
-  organizationAuthorizationUsers = {},
+  organizationAuthorizationActors = {},
   repository,
   fetchImpl = fetch,
   cryptoImpl = crypto,
@@ -191,7 +199,7 @@ export async function verifyGitHubActionsOidc({
     audience,
     allowedWorkflowRefs,
     allowedDelegatedWorkflowRefs,
-    organizationAuthorizationUsers,
+    organizationAuthorizationActors,
     repository,
     nowSeconds
   });
