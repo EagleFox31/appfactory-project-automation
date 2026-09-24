@@ -124,12 +124,12 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83
     with:
-      authentication: github-app-user
+      authentication: broker-user
       broker_url: https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token
       broker_audience: appfactory-project-automation
-      appfactory_ref: 7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+      appfactory_ref: 14d51168311c25f41d89df370c5e2ad2d5f42e83
       config_path: .github/project-config.json
       issue_number: ${{ inputs.issue_number }}
 ```
@@ -138,7 +138,7 @@ jobs:
 
 For the hosted AppFactory broker, the Project owner authorizes the OAuth App once at `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/authorize`. This authorization is account-level and can be reused by compatible public repositories owned by the same account; **do not create a `PROJECT_TOKEN` secret in each repository**.
 
-The production broker currently pins the reusable workflow to immutable runtime `7ff298087308d7ddcc8e507d8eb9adb56c2e2158`. That pin is intentional until the protected `v1` workflow identity is added to the broker allowlist through the deployment workflow.
+The production broker now pins the promoted immutable Project runtime `14d51168311c25f41d89df370c5e2ad2d5f42e83`. The hosted broker accepts that reviewed workflow identity directly; consumers should use `broker-user` and the same immutable runtime for the reusable workflow and Action checkout.
 
 If you explicitly need the old PAT path, use [`examples/project-automation-pat.yml`](examples/project-automation-pat.yml).
 

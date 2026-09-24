@@ -48,12 +48,9 @@ test('native broker config binds Trigenys to the explicit owner actor', () => {
 });
 
 test('native Cloudflare broker config pins current OIDC trust boundaries', () => {
-  assert.deepEqual(
-    wrangler.vars.ALLOWED_JOB_WORKFLOW_REFS.split(/\n/u),
-    [
-      'EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158',
-      'EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83'
-    ]
+  assert.equal(
+    wrangler.vars.ALLOWED_JOB_WORKFLOW_REFS,
+    'EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83'
   );
   assert.equal(
     wrangler.vars.DELEGATED_CALLER_WORKFLOW_REFS,
