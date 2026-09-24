@@ -35,7 +35,9 @@ test('native Cloudflare broker config requires existing Worker secrets without s
     [...wrangler.secrets.required].sort(),
     ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'TOKEN_ENCRYPTION_KEY'].sort()
   );
-  assert.doesNotMatch(JSON.stringify(wrangler), /client_secret|encryption_key.*[A-Za-z0-9_-]{20}/i);
+  assert.equal('GITHUB_CLIENT_ID' in wrangler.vars, false);
+  assert.equal('GITHUB_CLIENT_SECRET' in wrangler.vars, false);
+  assert.equal('TOKEN_ENCRYPTION_KEY' in wrangler.vars, false);
 });
 
 test('native Cloudflare broker config pins current OIDC trust boundaries', () => {
