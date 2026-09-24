@@ -5,15 +5,24 @@
   "compatibility_date": "2026-09-17",
   "workers_dev": true,
   "vars": {
+    "GITHUB_AUTH_PROVIDER": "oauth-app",
     "BROKER_AUDIENCE": "appfactory-project-automation",
-    "ALLOWED_JOB_WORKFLOW_REFS": "REPLACE_AFTER_MERGE",
-    "PUBLIC_BASE_URL": "https://REPLACE_AFTER_DEPLOY.workers.dev"
+    "ALLOWED_JOB_WORKFLOW_REFS": "EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158",
+    "DELEGATED_CALLER_WORKFLOW_REFS": "EagleFox31/AgenStart/.github/workflows/project-broker-event-validation.yml@refs/heads/main",
+    "PUBLIC_BASE_URL": "https://appfactory-project-token-broker.lawrynnjennifer.workers.dev"
+  },
+  "secrets": {
+    "required": [
+      "GITHUB_CLIENT_ID",
+      "GITHUB_CLIENT_SECRET",
+      "TOKEN_ENCRYPTION_KEY"
+    ]
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "appfactory-project-token-broker",
-      "database_id": "REPLACE_AFTER_D1_CREATE",
+      "database_id": "0ba78a3f-8fb6-4065-88b2-de1e5231dd13",
       "migrations_dir": "migrations"
     }
   ]
