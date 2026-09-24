@@ -37,6 +37,8 @@ They are declared through Wrangler's `secrets.required` contract. A deployment f
 
 ## Cloudflare Workers Builds deployment
 
+Production deployments are triggered by pushes to `main` that affect the broker project. Cloudflare runs from the `/broker` root and executes `npm run deploy`.
+
 Connect the existing Worker to GitHub in Cloudflare:
 
 1. open **Workers & Pages → appfactory-project-token-broker → Settings → Builds**;
