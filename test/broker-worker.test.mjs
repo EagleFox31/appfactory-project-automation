@@ -51,6 +51,35 @@ test('authorization creates a one-time hashed state and redirects only to GitHub
   assert.notEqual(DB.writes[0].values[0], redirect.searchParams.get('state'));
 });
 
+test('private repository authorization is explicit and requests repo scope', async () => {
+  const DB = stateDb();
+  const response = await createBroker({ now: () => 1_000 }).fetch(
+    new Request('https://auth.example/authorize?repository_access=private'),
+    {
+      DB,
+      GITHUB_AUTH_PROVIDER: 'oauth-app',
+      GITHUB_CLIENT_ID: 'Iv23client',
+      PUBLIC_BASE_URL: 'https://auth.example'
+    }
+  );
+  assert.equal(response.status, 302);
+  const redirect = new URL(response.headers.get('location'));
+  assert.equal(redirect.searchParams.get('scope'), 'project repo offline_access');
+  assert.equal(DB.writes[0].values[3], 'private');
+
+  const invalid = await createBroker({ now: () => 1_000 }).fetch(
+    new Request('https://auth.example/authorize?repository_access=everything'),
+    {
+      DB: stateDb(),
+      GITHUB_AUTH_PROVIDER: 'oauth-app',
+      GITHUB_CLIENT_ID: 'Iv23client',
+      PUBLIC_BASE_URL: 'https://auth.example'
+    }
+  );
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(await invalid.json(), { error: 'invalid_repository_access' });
+});
+
 test('token exchange fails closed before remote calls when OIDC proof is missing', async () => {
   let remoteCalls = 0;
   const response = await createBroker({
