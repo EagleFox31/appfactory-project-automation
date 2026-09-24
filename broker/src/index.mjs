@@ -40,20 +40,22 @@ function requiredScopes(env, repositoryAccess = 'public') {
     'repository_access must be public or private.');
 }
 
-function organizationAuthorizationUsers(env) {
+function organizationAuthorizationActors(env) {
   const mappings = {};
-  for (const item of String(env.ORGANIZATION_AUTHORIZATION_USERS ?? '')
+  for (const item of String(env.ORGANIZATION_AUTHORIZATION_ACTORS ?? '')
     .split(/[\n,]/u).map((value) => value.trim()).filter(Boolean)) {
-    const match = item.match(/^([1-9]\d*):([1-9]\d*)$/u);
+    const match = item.match(/^([^:\s]+):([^:\s]+)$/u);
     if (!match) {
       throw new BrokerError(500, 'broker_misconfigured',
-        'ORGANIZATION_AUTHORIZATION_USERS must contain ownerId:userId pairs.');
+        'ORGANIZATION_AUTHORIZATION_ACTORS must contain owner:actor pairs.');
     }
-    if (mappings[match[1]] && mappings[match[1]] !== match[2]) {
+    const owner = match[1].toLowerCase();
+    const actor = match[2];
+    if (mappings[owner] && mappings[owner].toLowerCase() !== actor.toLowerCase()) {
       throw new BrokerError(500, 'broker_misconfigured',
-        'An organization owner ID has multiple authorization users.');
+        'An organization owner has multiple authorization actors.');
     }
-    mappings[match[1]] = match[2];
+    mappings[owner] = actor;
   }
   return mappings;
 }
@@ -310,7 +312,7 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     allowedWorkflowRefs: allowedWorkflowRefs(env),
     allowedDelegatedWorkflowRefs: provider(env) === 'oauth-app'
       ? allowedDelegatedWorkflowRefs(env) : [],
-    organizationAuthorizationUsers: organizationAuthorizationUsers(env),
+    organizationAuthorizationActors: organizationAuthorizationActors(env),
     repository,
     fetchImpl,
     nowSeconds
