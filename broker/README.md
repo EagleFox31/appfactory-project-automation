@@ -44,6 +44,11 @@ npx wrangler secret put TOKEN_ENCRYPTION_KEY
 npx wrangler deploy
 ```
 
+Hosted production endpoint (current AppFactory deployment):
+
+- exchange: `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token`
+- authorization: `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/authorize`
+
 After deployment:
 
 1. register a separate OAuth App with the exact callback URL `<PUBLIC_BASE_URL>/callback`, without wildcard matching;
@@ -72,9 +77,14 @@ before applying `0002`; never blindly apply an ALTER twice.
 - `POST /v1/github/user-token` — OIDC exchange used by AppFactory workflows.
 
 By default the workflow actor must be the authorized personal account owner.
-An explicit `DELEGATED_CALLER_WORKFLOW_REFS` allowlist also permits contributor
-actors on `issues` and `pull_request_target` in public, owner-controlled
-repositories when the caller workflow and branch match exactly. The exchange
-uses the owner's authorization but audits the triggering actor. Other events,
-including Dependabot's `dynamic` OIDC event, remain rejected. Keep the PAT
-consumer until this opt-in policy passes a real non-owner event test.
+That owner path is production-validated for automatic `issues` events on
+AgenStart and AgenFetch without `PROJECT_TOKEN`.
+
+An explicit `DELEGATED_CALLER_WORKFLOW_REFS` allowlist can also permit
+contributor actors on `issues` and `pull_request_target` in public,
+owner-controlled repositories when the caller workflow and branch match exactly.
+The exchange uses the owner's authorization but audits the triggering actor.
+Other events, including Dependabot's `dynamic` OIDC event, remain rejected.
+Do not enable delegated contributor/bot claims until a real non-owner event has
+been validated. This limitation no longer requires owner-triggered workflows to
+retain a PAT.
