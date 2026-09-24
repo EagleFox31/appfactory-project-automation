@@ -4,6 +4,7 @@ import {
   authorizationUrl,
   exchangeAuthorizationCode,
   fetchAuthorizedUser,
+  hasRequiredScopes,
   refreshUserAccessToken,
   verifyRepositoryAccess
 } from './github.mjs';
@@ -31,8 +32,30 @@ function provider(env) {
   return name;
 }
 
-function requiredScopes(env) {
-  return provider(env) === 'oauth-app' ? ['project', 'public_repo'] : [];
+function requiredScopes(env, repositoryAccess = 'public') {
+  if (provider(env) !== 'oauth-app') return [];
+  if (repositoryAccess === 'public') return ['project', 'public_repo'];
+  if (repositoryAccess === 'private') return ['project', 'repo'];
+  throw new BrokerError(400, 'invalid_repository_access',
+    'repository_access must be public or private.');
+}
+
+function organizationAuthorizationUsers(env) {
+  const mappings = {};
+  for (const item of String(env.ORGANIZATION_AUTHORIZATION_USERS ?? '')
+    .split(/[\n,]/u).map((value) => value.trim()).filter(Boolean)) {
+    const match = item.match(/^([1-9]\d*):([1-9]\d*)$/u);
+    if (!match) {
+      throw new BrokerError(500, 'broker_misconfigured',
+        'ORGANIZATION_AUTHORIZATION_USERS must contain ownerId:userId pairs.');
+    }
+    if (mappings[match[1]] && mappings[match[1]] !== match[2]) {
+      throw new BrokerError(500, 'broker_misconfigured',
+        'An organization owner ID has multiple authorization users.');
+    }
+    mappings[match[1]] = match[2];
+  }
+  return mappings;
 }
 
 function authorizationKey(env, userId) {
@@ -123,7 +146,7 @@ function encryptionContext(userId) {
   return `appfactory:github-user:${userId}`;
 }
 
-async function decryptedAuthorization(env, authorization) {
+async function decryptedAuthorization(env, authorization, scopes = requiredScopes(env)) {
   const bundle = await decryptTokenBundle({
     ciphertext: authorization.encryptedTokens,
     context: encryptionContext(authorization.userId),
@@ -132,22 +155,23 @@ async function decryptedAuthorization(env, authorization) {
   if (!bundle?.accessToken || !bundle?.refreshToken) {
     throw new BrokerError(500, 'stored_authorization_invalid', 'Stored authorization is invalid.');
   }
-  if (requiredScopes(env).some((scope) => !bundle.scopes?.includes(scope))) {
-    throw new BrokerError(401, 'user_reauthorization_required', 'Stored OAuth permissions are insufficient.');
+  if (!hasRequiredScopes(bundle.scopes ?? [], scopes)) {
+    throw new BrokerError(401, 'user_reauthorization_required',
+      'Stored OAuth permissions are insufficient. Reauthorize the broker for this repository visibility.');
   }
   return bundle;
 }
 
-async function refreshAuthorization({ env, authorization, fetchImpl, nowSeconds }) {
+async function refreshAuthorization({ env, authorization, scopes, fetchImpl, nowSeconds }) {
   if (authorization.refreshExpiresAt <= nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
     throw new BrokerError(401, 'user_reauthorization_required', 'GitHub user authorization has expired.');
   }
-  const current = await decryptedAuthorization(env, authorization);
+  const current = await decryptedAuthorization(env, authorization, scopes);
   const refreshed = await refreshUserAccessToken({
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
     clientSecret: configured(env, 'GITHUB_CLIENT_SECRET'),
     refreshToken: current.refreshToken,
-    requiredScopes: requiredScopes(env),
+    requiredScopes: scopes,
     fetchImpl,
     nowSeconds
   });
@@ -169,14 +193,16 @@ async function refreshAuthorization({ env, authorization, fetchImpl, nowSeconds 
   if (winner.accessExpiresAt <= nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
     throw new BrokerError(409, 'authorization_refresh_conflict', 'Concurrent token refresh did not converge.');
   }
-  return decryptedAuthorization(env, winner);
+  return decryptedAuthorization(env, winner, scopes);
 }
 
-async function usableAuthorization({ env, userId, fetchImpl, nowSeconds, forceRefresh = false }) {
+async function usableAuthorization({
+  env, userId, scopes, fetchImpl, nowSeconds, forceRefresh = false
+}) {
   const key = authorizationKey(env, userId);
   const authorization = await loadAuthorization(env.DB, key);
   if (!forceRefresh && authorization.accessExpiresAt > nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
-    return decryptedAuthorization(env, authorization);
+    return decryptedAuthorization(env, authorization, scopes);
   }
   const leaseId = randomState();
   if (!await acquireRefreshLease(env.DB, { key, leaseId, nowSeconds })) {
@@ -185,22 +211,27 @@ async function usableAuthorization({ env, userId, fetchImpl, nowSeconds, forceRe
   try {
     const latest = await loadAuthorization(env.DB, key);
     if (latest.version !== authorization.version && latest.accessExpiresAt > nowSeconds + ACCESS_TOKEN_REFRESH_MARGIN) {
-      return decryptedAuthorization(env, latest);
+      return decryptedAuthorization(env, latest, scopes);
     }
-    return await refreshAuthorization({ env, authorization: latest, fetchImpl, nowSeconds });
+    return await refreshAuthorization({
+      env, authorization: latest, scopes, fetchImpl, nowSeconds
+    });
   } finally {
     await releaseRefreshLease(env.DB, { key, leaseId });
   }
 }
 
-async function authorize(env, nowSeconds) {
+async function authorize(request, env, nowSeconds) {
   const state = randomState();
   const codeVerifier = randomState();
-  const scopes = requiredScopes(env);
+  const url = new URL(request.url);
+  const repositoryAccess = String(url.searchParams.get('repository_access') ?? 'public').trim();
+  const scopes = requiredScopes(env, repositoryAccess);
   await createOAuthState(env.DB, {
     stateHash: await sha256(state),
     expiresAt: nowSeconds + 600,
-    codeVerifier
+    codeVerifier,
+    repositoryAccess
   });
   const location = authorizationUrl({
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
@@ -223,16 +254,21 @@ async function oauthCallback(request, env, fetchImpl, nowSeconds) {
   const cookie = (request.headers.get('cookie') ?? '').split(';').map((part) => part.trim())
     .find((part) => part.startsWith(`${STATE_COOKIE}=`))?.slice(STATE_COOKIE.length + 1);
   if (!cookie || cookie !== state) throw new BrokerError(400, 'invalid_oauth_state', 'OAuth browser state does not match.');
-  const codeVerifier = await consumeOAuthState(env.DB, { stateHash: await sha256(state), nowSeconds });
-  if (!codeVerifier) throw new BrokerError(400, 'invalid_oauth_state', 'Restart OAuth authorization.');
+  const oauthState = await consumeOAuthState(env.DB, {
+    stateHash: await sha256(state), nowSeconds
+  });
+  if (!oauthState.codeVerifier) {
+    throw new BrokerError(400, 'invalid_oauth_state', 'Restart OAuth authorization.');
+  }
+  const scopes = requiredScopes(env, oauthState.repositoryAccess);
 
   const tokens = await exchangeAuthorizationCode({
     clientId: configured(env, 'GITHUB_CLIENT_ID'),
     clientSecret: configured(env, 'GITHUB_CLIENT_SECRET'),
     code,
     redirectUri: callbackUrl(env),
-    codeVerifier,
-    requiredScopes: requiredScopes(env),
+    codeVerifier: oauthState.codeVerifier,
+    requiredScopes: scopes,
     fetchImpl,
     nowSeconds
   });
@@ -274,6 +310,7 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     allowedWorkflowRefs: allowedWorkflowRefs(env),
     allowedDelegatedWorkflowRefs: provider(env) === 'oauth-app'
       ? allowedDelegatedWorkflowRefs(env) : [],
+    organizationAuthorizationUsers: organizationAuthorizationUsers(env),
     repository,
     fetchImpl,
     nowSeconds
@@ -283,9 +320,14 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     nowSeconds
   });
 
+  const scopes = requiredScopes(
+    env,
+    identity.repositoryVisibility === 'public' ? 'public' : 'private'
+  );
   let tokens = await usableAuthorization({
     env,
     userId: identity.authorizationUserId,
+    scopes,
     fetchImpl,
     nowSeconds
   });
@@ -302,6 +344,7 @@ async function projectToken(request, env, fetchImpl, nowSeconds) {
     tokens = await usableAuthorization({
       env,
       userId: identity.authorizationUserId,
+      scopes,
       fetchImpl,
       nowSeconds,
       forceRefresh: true
@@ -338,7 +381,7 @@ export function createBroker({ fetchImpl = fetch, now = () => Math.floor(Date.no
           return json({ status: 'ok' });
         }
         if (request.method === 'GET' && url.pathname === '/authorize') {
-          return await authorize(env, now());
+          return await authorize(request, env, now());
         }
         if (request.method === 'GET' && url.pathname === '/callback') {
           return await oauthCallback(request, env, fetchImpl, now());
