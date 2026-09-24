@@ -14,58 +14,50 @@ Consumer repositories never receive the GitHub App client secret, private key or
 
 ## Required configuration
 
-Production deployment is handled by the manually dispatched **Deploy Project token broker** workflow. It is deliberately not triggered by pushes, pull requests, merges, schedules or AppFactory releases.
+The production broker is deployed through **Cloudflare Workers Builds** using Cloudflare's GitHub App integration. GitHub does not store a Cloudflare API token for this path.
 
-Create the protected GitHub environment `project-token-broker-production` and configure:
+The repository-owned deployment contract lives in `broker/wrangler.jsonc`:
 
-Repository/environment secrets:
+- Worker name: `appfactory-project-token-broker`;
+- public origin: `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev`;
+- D1 binding: `DB` → `appfactory-project-token-broker`;
+- D1 database ID: `0ba78a3f-8fb6-4065-88b2-de1e5231dd13`;
+- Project auth provider: `oauth-app`;
+- OIDC audience: `appfactory-project-automation`;
+- reusable workflow allowlist: the currently validated immutable AppFactory runtime;
+- delegated caller allowlist: the isolated AgenStart `[broker-test]` workflow.
 
-- `CLOUDFLARE_API_TOKEN` — Cloudflare token with Workers Scripts Edit and D1 Edit for the selected account;
-- `BROKER_GITHUB_CLIENT_SECRET` — required only when explicitly synchronizing Worker secrets;
-- `BROKER_TOKEN_ENCRYPTION_KEY` — required only when explicitly synchronizing Worker secrets. **Never generate a replacement key for an existing D1 authorization store** unless you intentionally invalidate those encrypted authorizations.
+The following values remain **Cloudflare Worker secrets** and are never committed to GitHub:
 
-Repository/environment variables:
+- `GITHUB_CLIENT_ID`;
+- `GITHUB_CLIENT_SECRET`;
+- `TOKEN_ENCRYPTION_KEY`.
 
-- `CLOUDFLARE_ACCOUNT_ID`;
-- `BROKER_GITHUB_CLIENT_ID` — required only when explicitly synchronizing Worker secrets;
-- `BROKER_ALLOWED_JOB_WORKFLOW_REFS` — comma/newline-separated exact reusable-workflow identities;
-- `BROKER_PUBLIC_BASE_URL` — optional. Leave empty on the first deployment to adopt the generated `workers.dev` origin;
-- `BROKER_GITHUB_AUTH_PROVIDER` — optional; defaults to `oauth-app`;
-- `BROKER_DELEGATED_CALLER_WORKFLOW_REFS` — optional and empty by default.
+They are declared through Wrangler's `secrets.required` contract. A deployment fails if one is missing, while their values stay managed by Cloudflare.
 
-The deployed Worker receives `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY` as Worker secrets. The App private key is not required by this broker. Repository Governance continues to mint installation tokens through its separate workflow.
+## Cloudflare Workers Builds deployment
 
-## GitHub Actions deployment
+Connect the existing Worker to GitHub in Cloudflare:
 
-Run **Actions → Deploy Project token broker → Run workflow** with `apply_migrations` enabled.
+1. open **Workers & Pages → appfactory-project-token-broker → Settings → Builds**;
+2. choose **Connect** and authorize the Cloudflare GitHub App;
+3. select repository `EagleFox31/appfactory-project-automation`;
+4. set production branch to `main`;
+5. set root directory to `broker`;
+6. leave the build command empty;
+7. set the deploy command to `npm run deploy`.
 
-For an existing production broker, leave `sync_worker_secrets` **disabled**. Wrangler preserves the Worker secrets already stored in Cloudflare. Enable that option only for a new broker or an intentional OAuth/encryption-secret rotation after all three replacement values have been staged in GitHub.
-
-The workflow:
-
-1. validates every required GitHub/Cloudflare setting before remote mutation;
-2. reuses the canonical D1 database or creates it once;
-3. refuses to replay migrations over an existing broker schema that has no Wrangler `d1_migrations` history;
-4. lists and applies only pending versioned D1 migrations;
-5. verifies the PKCE/refresh-lock schema;
-6. deploys with `cloudflare/wrangler-action@v4`, preserving existing Cloudflare Worker secrets by default;
-7. optionally synchronizes the OAuth/encryption secrets only when `sync_worker_secrets` is enabled;
-8. adopts the first `workers.dev` URL when no public origin is configured, then redeploys with the real callback origin;
-9. verifies `/healthz` and writes the authorization/callback/exchange URLs to the job summary.
-
-Cloudflare D1 records applied migration names in `d1_migrations`. `schema.sql` remains a current-schema reference for tests; it is not the production upgrade mechanism.
-
-### Manual fallback
+The `broker/package.json` deploy script runs:
 
 ```bash
-cd broker
-npx wrangler d1 create appfactory-project-token-broker
-npx wrangler d1 migrations apply appfactory-project-token-broker --remote
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-npx wrangler secret put TOKEN_ENCRYPTION_KEY
-npx wrangler deploy
+wrangler d1 migrations apply DB --remote && wrangler deploy
 ```
+
+That makes D1 migration and Worker deployment one convergent Cloudflare-owned operation. Cloudflare authenticates its own build environment; no `CLOUDFLARE_API_TOKEN` is stored in GitHub.
+
+The old GitHub Actions broker deployment workflow and its temporary config renderer were removed to avoid maintaining two competing deployment paths.
+
+`schema.sql` remains a current-schema reference for tests. Production upgrades use the versioned files under `broker/migrations/`.
 
 Hosted production endpoint (current AppFactory deployment):
 
