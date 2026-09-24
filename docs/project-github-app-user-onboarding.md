@@ -1,12 +1,17 @@
 # Zero-PAT authentication for user-owned GitHub Projects
 
-**Rollout status (2026-09-19):** personal Projects require the separate OAuth App
+**Rollout status (2026-09-24):** personal Projects use the separate OAuth App
 provider. The original GitHub App account-Projects permission assumption was
-incorrect. Use `GITHUB_AUTH_PROVIDER=oauth-app` on the broker and `broker-user`
-on consumers; `github-app-user` remains a transport-compatible alias. See the
-[provider assessment](project-oauth-app-feasibility.md) and [broker setup](../broker/README.md).
-Two owner-triggered AgenStart runs reconciled the personal Project without PAT.
-Keep `PROJECT_TOKEN` for production events until contributor and bot paths pass.
+incorrect. The hosted broker runs with `GITHUB_AUTH_PROVIDER=oauth-app`.
+Owner-triggered production Issue events are now validated end to end without PAT
+on both AgenStart and AgenFetch: the broker job succeeded, the token/PAT job was
+skipped, and the existing Projects were reconciled in place. The production
+broker currently authorizes immutable AppFactory runtime
+`7ff298087308d7ddcc8e507d8eb9adb56c2e2158`; consumers must use its historical
+authentication name `github-app-user` until the live allowlist is advanced to
+the protected `v1` workflow identity. Contributor and bot delegation remains a
+separate validation boundary. See the [provider assessment](project-oauth-app-feasibility.md)
+and [broker setup](../broker/README.md).
 
 AppFactory can exchange a GitHub Actions OpenID Connect (OIDC) identity for an expiring user access token. The OAuth App provider requests `project public_repo offline_access` for the public-repository rollout. The owner-triggered workflow has resolved and reconciled AgenStart's existing Project twice.
 
@@ -48,10 +53,11 @@ after the operator explicitly allows the exact caller `workflow_ref` on its
 default branch with `DELEGATED_CALLER_WORKFLOW_REFS`. The OIDC proof must bind
 the public repository, actor, event, branch and immutable reusable workflow.
 Dependabot's `dynamic` event remains rejected. Bot-triggered events need
-their own live validation before migration. A successful
-owner-triggered manual run does not prove the event-driven workflows can be
-migrated. Keep their current authentication until a real non-owner event passes;
-do not silently skip contributor events to claim a zero-PAT rollout.
+their own live validation before migration. Owner-triggered event workflows have now been live-validated and can use the
+broker path without `PROJECT_TOKEN`. That result does **not** prove delegated
+non-owner events: keep contributor/bot delegation disabled until a real
+non-owner event passes, and do not silently skip those events to claim broader
+coverage.
 
 Start with a separate manual workflow, leaving the existing workflow in place.
 The [manual validation example](../examples/project-broker-validation.yml) pins both
@@ -62,10 +68,10 @@ existing Project identity and item count before changing the production workflow
 
 1. Complete the broker authorization flow for the Project owner.
 2. Add `APPFACTORY_PROJECT_BROKER_URL` as a repository variable.
-3. Validate the separate manual workflow, then replace compatible consumer workflows with the brokered example.
+3. Validate the separate manual workflow, then replace owner-triggered consumer workflows with the brokered example.
 4. Trigger a manual synchronization and verify that the existing Project is resolved rather than recreated.
-5. Open or resync one Issue and verify its existing Project item is updated idempotently.
-6. Delete `PROJECT_TOKEN` only after every Project workflow in the repository uses `github-app-user`, all supported actors/events have passed, and no other workflow or script references the secret.
+5. Open or edit one Issue as the repository owner and verify its existing Project item is updated idempotently.
+6. Remove `PROJECT_TOKEN` from Project workflows once the owner event path passes and no other workflow or script requires that secret. Keep non-owner contributor/bot handling explicitly unsupported until its delegated path is live-validated.
 
 The `.github/project-config.json` contract does not change. Existing Projects, fields, views, items and repository links remain the source of current state and are reconciled in place.
 

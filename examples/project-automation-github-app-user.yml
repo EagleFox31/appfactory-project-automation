@@ -8,9 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: Optional Issue to resync; leave empty to bootstrap.
+        description: "Optional issue number to resync. Leave empty to bootstrap/reconcile the Project."
         required: false
         type: string
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   sync-project:
@@ -19,10 +24,11 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@v1
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158
     with:
       authentication: github-app-user
-      broker_url: ${{ vars.APPFACTORY_PROJECT_BROKER_URL }}
+      broker_url: https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token
       broker_audience: appfactory-project-automation
+      appfactory_ref: 7ff298087308d7ddcc8e507d8eb9adb56c2e2158
       config_path: .github/project-config.json
       issue_number: ${{ inputs.issue_number }}
