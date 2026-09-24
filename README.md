@@ -26,7 +26,7 @@ The capabilities are independent. A repository can adopt Project automation, gov
 
 Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair. Governance supports both the existing dedicated PAT and [short-lived GitHub App authentication](docs/github-app-onboarding.md).
 
-Project automation remains backward compatible with `PROJECT_TOKEN`. The [zero-PAT broker flow](docs/project-github-app-user-onboarding.md) uses a separate OAuth App for personal Projects; the earlier GitHub App account-Projects permission assumption was incorrect. The broker stores encrypted refresh tokens and exchanges signed GitHub Actions OIDC proofs for expiring user tokens. Two owner-triggered AgenStart runs passed without PAT; keep the production event workflow on `PROJECT_TOKEN` until contributor and bot paths are supported and verified.
+Project automation is **zero-PAT by default for owner-triggered workflows**. The [OIDC broker flow](docs/project-github-app-user-onboarding.md) uses a separate OAuth App for personal Projects: consumer repositories store no `PROJECT_TOKEN`, client secret or refresh token. Production Issue-event runs have passed end to end on AgenStart and AgenFetch with the broker job succeeding and the PAT job skipped. `PROJECT_TOKEN` remains supported only as a legacy fallback while delegated contributor/bot paths are validated.
 
 The reference Cloudflare Worker implementation lives in [`broker/`](broker/README.md). It verifies GitHub Actions OIDC identity, encrypts rotating user credentials in D1 and restricts exchanges to exact reusable-workflow identities.
 
@@ -119,23 +119,28 @@ permissions:
 
 jobs:
   sync-project:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - uses: EagleFox31/appfactory-project-automation@v1
-        with:
-          token: ${{ secrets.PROJECT_TOKEN }}
-          config-path: .github/project-config.json
-          issue-number: ${{ inputs.issue_number }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+    with:
+      authentication: github-app-user
+      broker_url: https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token
+      broker_audience: appfactory-project-automation
+      appfactory_ref: 7ff298087308d7ddcc8e507d8eb9adb56c2e2158
+      config_path: .github/project-config.json
+      issue_number: ${{ inputs.issue_number }}
 ```
 
-### 3. Add the token
+### 3. Authorize AppFactory once
 
-Create a repository Actions secret named `PROJECT_TOKEN` with GitHub Projects access to the configured owner. To remove that long-lived repository secret, use the separate [GitHub App user/OIDC onboarding flow](docs/project-github-app-user-onboarding.md) after a compatible broker has been deployed and authorized.
+For the hosted AppFactory broker, the Project owner authorizes the OAuth App once at `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/authorize`. This authorization is account-level and can be reused by compatible public repositories owned by the same account; **do not create a `PROJECT_TOKEN` secret in each repository**.
+
+The production broker currently pins the reusable workflow to immutable runtime `7ff298087308d7ddcc8e507d8eb9adb56c2e2158`. That pin is intentional until the protected `v1` workflow identity is added to the broker allowlist through the deployment workflow.
+
+If you explicitly need the old PAT path, use [`examples/project-automation-pat.yml`](examples/project-automation-pat.yml).
 
 ### 4. Bootstrap once
 
@@ -366,7 +371,8 @@ For Project automation:
 
 - the Action never executes code from a pull request;
 - consumers using `pull_request_target` must checkout the trusted default branch rather than untrusted PR code;
-- the Project token is passed explicitly as an Action input and is never printed;
+- zero-PAT consumers obtain a short-lived Project token through GitHub Actions OIDC and the broker; no reusable Project credential is stored in the consumer repository;
+- the legacy PAT path still masks the explicitly supplied token and is kept only for backward compatibility;
 - built-in `GITHUB_TOKEN` permissions can stay read-only;
 - Project/field/option IDs are discovered at runtime rather than copied into source;
 - bootstrap only mutates the explicitly configured Project owner/title and consuming repository;
