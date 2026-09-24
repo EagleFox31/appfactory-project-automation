@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: true
+      sync_worker_secrets:
+        description: Replace the existing Cloudflare Worker OAuth/encryption secrets from GitHub
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,7 +29,7 @@ jobs:
     environment: project-token-broker-production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       GITHUB_CLIENT_ID: ${{ vars.BROKER_GITHUB_CLIENT_ID }}
       GITHUB_CLIENT_SECRET: ${{ secrets.BROKER_GITHUB_CLIENT_SECRET }}
       TOKEN_ENCRYPTION_KEY: ${{ secrets.BROKER_TOKEN_ENCRYPTION_KEY }}
@@ -49,15 +54,21 @@ jobs:
           for name in \
             CLOUDFLARE_API_TOKEN \
             CLOUDFLARE_ACCOUNT_ID \
-            GITHUB_CLIENT_ID \
-            GITHUB_CLIENT_SECRET \
-            TOKEN_ENCRYPTION_KEY \
             BROKER_ALLOWED_JOB_WORKFLOW_REFS
           do
             if [[ -z "${!name}" ]]; then
               missing+=("${name}")
             fi
           done
+
+          if [[ "${{ inputs.sync_worker_secrets }}" == "true" ]]; then
+            for name in GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET TOKEN_ENCRYPTION_KEY
+            do
+              if [[ -z "${!name}" ]]; then
+                missing+=("${name}")
+              fi
+            done
+          fi
 
           if (( ${#missing[@]} > 0 )); then
             printf '::error title=Missing broker deployment configuration::Set: %s\n' "${missing[*]}"
@@ -167,12 +178,24 @@ jobs:
           jq -e '[.[].results[]? | select(.name == "code_verifier")] | length == 1' <<< "${columns}" >/dev/null
           jq -e '[.[].results[]? | select(.name == "authorization_refresh_locks")] | length == 1' <<< "${tables}" >/dev/null
 
-      - name: Deploy broker
-        id: deploy
+      - name: Deploy broker and preserve existing Worker secrets
+        id: deploy_preserve
+        if: ${{ !inputs.sync_worker_secrets }}
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+
+      - name: Deploy broker and synchronize Worker secrets
+        id: deploy_sync
+        if: ${{ inputs.sync_worker_secrets }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: broker
           wranglerVersion: "4"
           command: deploy --config wrangler.deploy.jsonc
@@ -188,9 +211,12 @@ jobs:
       - name: Adopt discovered workers.dev URL
         if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
         env:
-          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          PRESERVED_DEPLOYMENT_URL: ${{ steps.deploy_preserve.outputs.deployment-url }}
+          SYNCED_DEPLOYMENT_URL: ${{ steps.deploy_sync.outputs.deployment-url }}
         shell: bash
         run: |
+          DEPLOYMENT_URL="${PRESERVED_DEPLOYMENT_URL:-${SYNCED_DEPLOYMENT_URL}}"
+
           if [[ -z "${DEPLOYMENT_URL}" ]]; then
             echo '::error title=Missing deployment URL::Wrangler did not report the deployed Worker URL.'
             exit 1
@@ -200,13 +226,24 @@ jobs:
           node scripts/render-wrangler-config.mjs \
             set-public-base-url "${CONFIG_PATH}" "${DEPLOYMENT_URL}"
 
-      - name: Redeploy with discovered public URL
-        id: redeploy
-        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' }}
+      - name: Redeploy with discovered public URL and preserve Worker secrets
+        id: redeploy_preserve
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' && !inputs.sync_worker_secrets }}
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: broker
+          wranglerVersion: "4"
+          command: deploy --config wrangler.deploy.jsonc
+
+      - name: Redeploy with discovered public URL and synchronize Worker secrets
+        id: redeploy_sync
+        if: ${{ vars.BROKER_PUBLIC_BASE_URL == '' && inputs.sync_worker_secrets }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: broker
           wranglerVersion: "4"
           command: deploy --config wrangler.deploy.jsonc
@@ -221,11 +258,14 @@ jobs:
 
       - name: Verify broker health
         env:
-          INITIAL_DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
-          FINAL_DEPLOYMENT_URL: ${{ steps.redeploy.outputs.deployment-url }}
+          INITIAL_PRESERVED_DEPLOYMENT_URL: ${{ steps.deploy_preserve.outputs.deployment-url }}
+          INITIAL_SYNCED_DEPLOYMENT_URL: ${{ steps.deploy_sync.outputs.deployment-url }}
+          FINAL_PRESERVED_DEPLOYMENT_URL: ${{ steps.redeploy_preserve.outputs.deployment-url }}
+          FINAL_SYNCED_DEPLOYMENT_URL: ${{ steps.redeploy_sync.outputs.deployment-url }}
         shell: bash
         run: |
-          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-${FINAL_DEPLOYMENT_URL:-${INITIAL_DEPLOYMENT_URL}}}"
+          deployment_url="${FINAL_PRESERVED_DEPLOYMENT_URL:-${FINAL_SYNCED_DEPLOYMENT_URL:-${INITIAL_PRESERVED_DEPLOYMENT_URL:-${INITIAL_SYNCED_DEPLOYMENT_URL}}}}"
+          public_base_url="${CONFIGURED_PUBLIC_BASE_URL:-${deployment_url}}"
           public_base_url="${public_base_url%/}"
 
           if [[ -z "${public_base_url}" ]]; then
@@ -250,6 +290,7 @@ jobs:
             echo "- Worker: ${BROKER_PUBLIC_BASE_URL}"
             echo "- D1 created during this run: ${{ steps.d1.outputs.created }}"
             echo "- Migrations requested: ${{ inputs.apply_migrations }}"
+            echo "- Worker secrets synchronized from GitHub: ${{ inputs.sync_worker_secrets }}"
             echo "- Health: ${BROKER_PUBLIC_BASE_URL}/healthz"
             echo "- Authorization: ${BROKER_PUBLIC_BASE_URL}/authorize"
             echo "- OAuth callback: ${BROKER_PUBLIC_BASE_URL}/callback"

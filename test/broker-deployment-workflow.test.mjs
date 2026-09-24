@@ -46,10 +46,13 @@ test('broker deployment does not publish an AppFactory release', () => {
 
 test('broker deployment receives credentials only from protected GitHub configuration', () => {
   assert.match(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
-  assert.match(workflow, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
+  assert.match(workflow, /vars\.CLOUDFLARE_ACCOUNT_ID/);
   assert.match(workflow, /vars\.BROKER_GITHUB_CLIENT_ID/);
   assert.match(workflow, /secrets\.BROKER_GITHUB_CLIENT_SECRET/);
   assert.match(workflow, /secrets\.BROKER_TOKEN_ENCRYPTION_KEY/);
+  assert.match(workflow, /sync_worker_secrets:/);
+  assert.match(workflow, /default: false/);
+  assert.match(workflow, /preserve existing Worker secrets/i);
   assert.doesNotMatch(workflow, /BEGIN (RSA )?PRIVATE KEY|Iv23/);
 });
 
