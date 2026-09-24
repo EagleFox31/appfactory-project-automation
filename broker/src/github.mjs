@@ -16,6 +16,13 @@ function expiry(nowSeconds, expiresIn, label) {
   return nowSeconds + seconds;
 }
 
+export function hasRequiredScopes(grantedScopes = [], requiredScopes = []) {
+  const granted = new Set(grantedScopes);
+  return requiredScopes.every((scope) => (
+    granted.has(scope) || (scope === 'public_repo' && granted.has('repo'))
+  ));
+}
+
 function normalizeTokenResponse(payload, nowSeconds, requiredScopes = []) {
   if (payload?.error) {
     throw new BrokerError(401, 'github_authorization_failed', 'GitHub rejected the user authorization.');
@@ -31,7 +38,7 @@ function normalizeTokenResponse(payload, nowSeconds, requiredScopes = []) {
     'GitHub token expiration must be enabled.'
   );
   const scopes = String(payload?.scope ?? '').split(/[ ,]+/u).filter(Boolean);
-  if (requiredScopes.some((scope) => !scopes.includes(scope))) {
+  if (!hasRequiredScopes(scopes, requiredScopes)) {
     throw new BrokerError(403, 'oauth_scope_required', 'Required OAuth permissions were not granted.');
   }
   if (Number(payload.expires_in) > 28_800) {
