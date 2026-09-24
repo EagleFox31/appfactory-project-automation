@@ -144,6 +144,7 @@ test('mapped organization owner uses the authorized human identity for private r
   const organizationClaims = claims({
     repository: 'Trigenys/private-service',
     repository_id: '200',
+    repository_owner: 'Trigenys',
     repository_owner_id: '328842096',
     actor_id: '86088743',
     actor: 'EagleFox31',
@@ -153,7 +154,7 @@ test('mapped organization owner uses the authorized human identity for private r
     claims: organizationClaims,
     audience,
     allowedWorkflowRefs: [workflowRef],
-    organizationAuthorizationUsers: { '328842096': '86088743' },
+    organizationAuthorizationActors: { trigenys: 'EagleFox31' },
     repository: 'Trigenys/private-service',
     nowSeconds: 1_100
   });
@@ -165,7 +166,7 @@ test('mapped organization owner uses the authorized human identity for private r
     claims: { ...organizationClaims, actor_id: '77', actor: 'other-member' },
     audience,
     allowedWorkflowRefs: [workflowRef],
-    organizationAuthorizationUsers: { '328842096': '86088743' },
+    organizationAuthorizationActors: { trigenys: 'EagleFox31' },
     repository: 'Trigenys/private-service',
     nowSeconds: 1_100
   }), { code: 'personal_owner_required' });
@@ -174,7 +175,7 @@ test('mapped organization owner uses the authorized human identity for private r
     claims: organizationClaims,
     audience,
     allowedWorkflowRefs: [workflowRef],
-    organizationAuthorizationUsers: {},
+    organizationAuthorizationActors: {},
     repository: 'Trigenys/private-service',
     nowSeconds: 1_100
   }), { code: 'personal_owner_required' });
