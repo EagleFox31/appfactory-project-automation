@@ -14,25 +14,45 @@ Consumer repositories never receive the GitHub App client secret, private key or
 
 ## Required configuration
 
-Create a D1 database and replace the placeholders in `wrangler.jsonc`.
+Production deployment is handled by the manually dispatched **Deploy Project token broker** workflow. It is deliberately not triggered by pushes, pull requests, merges, schedules or AppFactory releases.
 
-Variables:
+Create the protected GitHub environment `project-token-broker-production` and configure:
 
-- `GITHUB_AUTH_PROVIDER` — `oauth-app` for the personal Project rollout; defaults to `github-app` for compatibility. OAuth credentials are stored in a separate client/user namespace.
-- `PUBLIC_BASE_URL` — deployed Worker HTTPS origin;
-- `BROKER_AUDIENCE` — keep `appfactory-project-automation` unless every caller and broker setting changes together;
-- `ALLOWED_JOB_WORKFLOW_REFS` — comma/newline-separated exact `job_workflow_ref` identities. Use immutable AppFactory commit refs during pre-release validation, then the protected `v1` tag.
-- `DELEGATED_CALLER_WORKFLOW_REFS` — optional, empty by default. For each public personal repository whose contributor events may use the owner's authorization, list the exact trusted caller `workflow_ref`, such as `EagleFox31/AgenStart/.github/workflows/project-automation.yml@refs/heads/main`. Only `issues` and `pull_request_target` runs from that same branch qualify. Review the caller before enabling this because its trusted code receives the owner's short-lived token.
+Repository/environment secrets:
 
-Secrets:
+- `CLOUDFLARE_API_TOKEN` — Cloudflare token with Workers Scripts Edit and D1 Edit for the selected account;
+- `CLOUDFLARE_ACCOUNT_ID`;
+- `BROKER_GITHUB_CLIENT_SECRET`;
+- `BROKER_TOKEN_ENCRYPTION_KEY` — 32 random bytes encoded as base64url.
 
-- `GITHUB_CLIENT_ID`;
-- `GITHUB_CLIENT_SECRET`;
-- `TOKEN_ENCRYPTION_KEY` — 32 random bytes encoded as base64url.
+Repository/environment variables:
 
-The App private key is not required by this broker. Repository Governance continues to mint installation tokens through its separate workflow.
+- `BROKER_GITHUB_CLIENT_ID`;
+- `BROKER_ALLOWED_JOB_WORKFLOW_REFS` — comma/newline-separated exact reusable-workflow identities;
+- `BROKER_PUBLIC_BASE_URL` — optional. Leave empty on the first deployment to adopt the generated `workers.dev` origin;
+- `BROKER_GITHUB_AUTH_PROVIDER` — optional; defaults to `oauth-app`;
+- `BROKER_DELEGATED_CALLER_WORKFLOW_REFS` — optional and empty by default.
 
-## Deployment sequence
+The deployed Worker receives `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY` as Worker secrets. The App private key is not required by this broker. Repository Governance continues to mint installation tokens through its separate workflow.
+
+## GitHub Actions deployment
+
+Run **Actions → Deploy Project token broker → Run workflow** with `apply_migrations` enabled.
+
+The workflow:
+
+1. validates every required GitHub/Cloudflare setting before remote mutation;
+2. reuses the canonical D1 database or creates it once;
+3. refuses to replay migrations over an existing broker schema that has no Wrangler `d1_migrations` history;
+4. lists and applies only pending versioned D1 migrations;
+5. verifies the PKCE/refresh-lock schema;
+6. deploys with `cloudflare/wrangler-action@v4`;
+7. adopts the first `workers.dev` URL when no public origin is configured, then redeploys with the real callback origin;
+8. verifies `/healthz` and writes the authorization/callback/exchange URLs to the job summary.
+
+Cloudflare D1 records applied migration names in `d1_migrations`. `schema.sql` remains a current-schema reference for tests; it is not the production upgrade mechanism.
+
+### Manual fallback
 
 ```bash
 cd broker
