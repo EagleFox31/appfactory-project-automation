@@ -7,7 +7,7 @@
   "vars": {
     "GITHUB_AUTH_PROVIDER": "oauth-app",
     "BROKER_AUDIENCE": "appfactory-project-automation",
-    "ALLOWED_JOB_WORKFLOW_REFS": "EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83",
+    "ALLOWED_JOB_WORKFLOW_REFS": "EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83,EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@b1deb7b1069739879d7a4acb9cd3521bca835049",
     "DELEGATED_CALLER_WORKFLOW_REFS": "EagleFox31/AgenStart/.github/workflows/project-broker-event-validation.yml@refs/heads/main",
     "ORGANIZATION_AUTHORIZATION_ACTORS": "Trigenys:EagleFox31",
     "PUBLIC_BASE_URL": "https://appfactory-project-token-broker.lawrynnjennifer.workers.dev"
