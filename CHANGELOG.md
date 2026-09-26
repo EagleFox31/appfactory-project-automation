@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.3.0...v1.4.0) (2026-09-26)
+
+
+### Features
+
+* **broker:** allow promoted Project runtime during migration ([0817c90](https://github.com/EagleFox31/appfactory-project-automation/commit/0817c90c6f9271c66532d8e37449dd24849ad92e))
+* **broker:** move production deployment to Cloudflare Workers Builds ([b4d0c22](https://github.com/EagleFox31/appfactory-project-automation/commit/b4d0c222eeb450560fd72a46c89b2bcb81798441))
+* **broker:** support private Trigenys repositories without PATs ([14d5116](https://github.com/EagleFox31/appfactory-project-automation/commit/14d51168311c25f41d89df370c5e2ad2d5f42e83))
+* **projects:** make zero-PAT the default Project workflow ([da6a1b4](https://github.com/EagleFox31/appfactory-project-automation/commit/da6a1b4a557e33d7e7829c11e14dab8ca409df4a))
+
+
+### Bug Fixes
+
+* **broker:** authorize durable project runtime ([e32d313](https://github.com/EagleFox31/appfactory-project-automation/commit/e32d313793affcf15ec78347c8188d98f2f32b4f))
+* **broker:** preserve existing Cloudflare Worker secrets by default ([24a70bd](https://github.com/EagleFox31/appfactory-project-automation/commit/24a70bd15910a53f3fa54182ba97b363144cadaf))
+* **projects:** isolate concurrency by work item ([8d3be4c](https://github.com/EagleFox31/appfactory-project-automation/commit/8d3be4c72740d22992bb449ff157cc7c818cf9d7))
+
+
+### Documentation
+
+* **broker:** record native Cloudflare build trigger ([57f1305](https://github.com/EagleFox31/appfactory-project-automation/commit/57f130581c5a10e5cc8f884df073641bc7b7e4f7))
+* **raider:** record dropped-event concurrency failure ([b1deb7b](https://github.com/EagleFox31/appfactory-project-automation/commit/b1deb7b1069739879d7a4acb9cd3521bca835049))
+
 ## [1.3.0](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.2.3...v1.3.0) (2026-09-22)
 
 
