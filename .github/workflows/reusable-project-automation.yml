@@ -39,7 +39,11 @@ on:
         required: false
 
 concurrency:
-  group: project-automation-${{ github.repository }}
+  # GitHub keeps at most one running and one pending run per concurrency group.
+  # A repository-wide group can therefore drop intermediate Issue events during
+  # backlog bursts. Scope the lane to the affected Issue/PR; repeated events for
+  # the same item remain convergent while independent items cannot cancel each other.
+  group: project-automation-${{ github.repository }}-${{ inputs.issue_number || github.event.issue.number || github.event.pull_request.number || 'bootstrap' }}
   cancel-in-progress: false
 
 jobs:
