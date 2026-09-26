@@ -320,3 +320,24 @@ Authorization metadata shaped around one credential class must not be generalize
 **Derived principle / standard change**
 
 RAIDER security preflights must establish capabilities at the boundary where the platform authoritatively validates them, then pass only a minimal non-secret proof into provider-agnostic execution.
+
+
+## 2026-09-26 — Repository-wide concurrency dropped backlog events
+
+**Context**  
+Creating a burst of Issues in a newly bootstrapped consumer caused several Project Automation workflow runs to be cancelled before synchronization.
+
+**Symptom / impact**  
+The Issues existed in GitHub, but intermediate issue-event runs never reached the Project synchronization step. A consumer could therefore have an incomplete board even though the reusable workflow declared `cancel-in-progress: false`.
+
+**Root cause**  
+GitHub Actions concurrency keeps at most one running and one pending run per concurrency group. The reusable workflow used one repository-wide group, so each new Issue event replaced the previous pending run.
+
+**Resolution**  
+Scope the concurrency key to the manual issue number, Issue number, pull-request number, or a bootstrap lane. Independent work items no longer cancel each other's pending synchronization.
+
+**Prevention**  
+A workflow contract test rejects the old repository-wide concurrency key. Event handlers remain idempotent so repeated events for the same work item converge safely.
+
+**RAIDER lesson**  
+Idempotency alone does not guarantee durability when the scheduler can discard work before execution. Queue/concurrency semantics are part of the automation contract and must be tested explicitly.
