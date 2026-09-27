@@ -21,6 +21,39 @@ test('Tauri release workflow preserves release integrity boundaries', async () =
   assert.match(workflow, /Get-FileHash .* -Algorithm SHA256/);
   assert.match(workflow, /build-provenance\.txt/);
   assert.match(workflow, /gh release upload/);
+  assert.equal((workflow.match(/- name: Locate generated MSI/g) ?? []).length, 1);
+  assert.equal((workflow.match(/- name: Package checksum and provenance/g) ?? []).length, 1);
+  assert.equal((workflow.match(/- name: Attach validated assets to GitHub Release/g) ?? []).length, 1);
+  assert.match(workflow, /\(\?<prerelease>\[0-9A-Za-z\.\-\]\+\).*\?\
+});
+
+test('Reusable semantic release supports manifest-config prerelease consumers', async () => {
+  const workflow = await readFile(reusableReleasePath, 'utf8');
+
+  assert.match(workflow, /config-file:/);
+  assert.match(workflow, /manifest-file:/);
+  assert.match(workflow, /id: release-manifest/);
+  assert.match(workflow, /googleapis\/release-please-action@v4/);
+});
+
+
+test('MSI version mapping keeps stable newer than beta for the same SemVer base', () => {
+  const derive = (version) => {
+    const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+    assert.ok(match);
+    const [, major, minor, patch, prerelease = ''] = match;
+    const tail = prerelease.match(/(?:^|\.)(\d+)$/);
+    const revision = prerelease ? Number(tail?.[1] ?? 0) : 65535;
+    assert.ok(revision >= 0 && revision <= 65535);
+    return `${major}.${minor}.${patch}.${revision}`;
+  };
+
+  assert.equal(derive('0.1.0-beta.1'), '0.1.0.1');
+  assert.equal(derive('0.1.0-beta.2'), '0.1.0.2');
+  assert.equal(derive('0.1.0-beta'), '0.1.0.0');
+  assert.equal(derive('0.1.0'), '0.1.0.65535');
+});
+/s);
   assert.doesNotMatch(workflow, /extra-args|build-args|shell-args/);
 });
 
