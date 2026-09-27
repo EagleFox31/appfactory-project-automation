@@ -166,10 +166,286 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          $match = [regex]::Match(
+            $env:VERSION,
+            '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?
+      - name: Locate generated MSI
+        id: installer
+        shell: pwsh
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $bundleDir = Join-Path (Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY) 'src-tauri/target/release/bundle/msi'
+          $installers = @(Get-ChildItem -LiteralPath $bundleDir -File -Filter '*.msi')
+
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one MSI in $bundleDir, found $($installers.Count)."
+          }
+
+          "path=$($installers[0].FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Verify clean MSI install and uninstall
+        shell: pwsh
+        env:
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & msiexec.exe /i $env:MSI_PATH /qn /norestart
+          $installExit = $LASTEXITCODE
+          if ($installExit -notin @(0, 3010)) {
+            throw "MSI installation failed with exit code $installExit."
+          }
+
+          & msiexec.exe /x $env:MSI_PATH /qn /norestart
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -notin @(0, 3010)) {
+            throw "MSI uninstall failed with exit code $uninstallExit."
+          }
+
+      - name: Package checksum and provenance
+        id: package
+        shell: pwsh
+        env:
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          VERSION: ${{ needs.release.outputs.version }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-release'
+          if (Test-Path $artifactDir) {
+            Remove-Item $artifactDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $artifactDir | Out-Null
+
+          $assetName = "$env:PRODUCT_NAME-v$env:VERSION-windows-x64.msi"
+          $checksumName = 'SHA256SUMS.txt'
+          $provenanceName = "$env:PRODUCT_NAME-v$env:VERSION-build-provenance.txt"
+
+          $assetPath = Join-Path $artifactDir $assetName
+          $checksumPath = Join-Path $artifactDir $checksumName
+          $provenancePath = Join-Path $artifactDir $provenanceName
+
+          Copy-Item -LiteralPath $env:MSI_PATH -Destination $assetPath
+
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          @(
+            "product=$env:PRODUCT_NAME"
+            "version=$env:VERSION"
+            "tag=$env:TAG_NAME"
+            "release_sha=$env:RELEASE_SHA"
+            "repository=$env:GITHUB_REPOSITORY"
+            "workflow=$env:GITHUB_WORKFLOW"
+            "run_id=$env:GITHUB_RUN_ID"
+            "run_attempt=$env:GITHUB_RUN_ATTEMPT"
+            "runner_os=$env:RUNNER_OS"
+            "bundle=msi"
+            "asset=$assetName"
+            "sha256=$hash"
+          ) | Set-Content -LiteralPath $provenancePath -Encoding utf8
+
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+          "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          "provenance_name=$provenanceName" >> $env:GITHUB_OUTPUT
+          "artifact_dir=$artifactDir" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.product-name }}-${{ needs.release.outputs.version }}-windows-x64
+          path: ${{ steps.package.outputs.artifact_dir }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach validated assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.release_token || github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
+          ASSET_NAME: ${{ steps.package.outputs.asset_name }}
+          CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
+          PROVENANCE_NAME: ${{ steps.package.outputs.provenance_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $files = @(
+            (Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:PROVENANCE_NAME)
+          )
+
+          gh release upload $env:TAG_NAME @files --repo $env:GITHUB_REPOSITORY --clobber
+
+          )
+          if (-not $match.Success) {
+            throw "Release version is not valid SemVer: $env:VERSION"
+          }
+
+          $major = [int]$match.Groups['major'].Value
+          $minor = [int]$match.Groups['minor'].Value
+          $patch = [int]$match.Groups['patch'].Value
+          if ($major -gt 255 -or $minor -gt 255 -or $patch -gt 65535) {
+            throw "Release version exceeds Windows MSI version bounds: $env:VERSION"
+          }
+
+          $prerelease = $match.Groups['prerelease'].Value
+          if ([string]::IsNullOrWhiteSpace($prerelease)) {
+            $revision = 65535
+          }
+          else {
+            $counterMatch = [regex]::Match($prerelease, '(?:^|\.)(?<counter>\d+)
+      - name: Locate generated MSI
+        id: installer
+        shell: pwsh
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $bundleDir = Join-Path (Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY) 'src-tauri/target/release/bundle/msi'
+          $installers = @(Get-ChildItem -LiteralPath $bundleDir -File -Filter '*.msi')
+
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one MSI in $bundleDir, found $($installers.Count)."
+          }
+
+          "path=$($installers[0].FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Verify clean MSI install and uninstall
+        shell: pwsh
+        env:
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & msiexec.exe /i $env:MSI_PATH /qn /norestart
+          $installExit = $LASTEXITCODE
+          if ($installExit -notin @(0, 3010)) {
+            throw "MSI installation failed with exit code $installExit."
+          }
+
+          & msiexec.exe /x $env:MSI_PATH /qn /norestart
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -notin @(0, 3010)) {
+            throw "MSI uninstall failed with exit code $uninstallExit."
+          }
+
+      - name: Package checksum and provenance
+        id: package
+        shell: pwsh
+        env:
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          VERSION: ${{ needs.release.outputs.version }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-release'
+          if (Test-Path $artifactDir) {
+            Remove-Item $artifactDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $artifactDir | Out-Null
+
+          $assetName = "$env:PRODUCT_NAME-v$env:VERSION-windows-x64.msi"
+          $checksumName = 'SHA256SUMS.txt'
+          $provenanceName = "$env:PRODUCT_NAME-v$env:VERSION-build-provenance.txt"
+
+          $assetPath = Join-Path $artifactDir $assetName
+          $checksumPath = Join-Path $artifactDir $checksumName
+          $provenancePath = Join-Path $artifactDir $provenanceName
+
+          Copy-Item -LiteralPath $env:MSI_PATH -Destination $assetPath
+
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          @(
+            "product=$env:PRODUCT_NAME"
+            "version=$env:VERSION"
+            "tag=$env:TAG_NAME"
+            "release_sha=$env:RELEASE_SHA"
+            "repository=$env:GITHUB_REPOSITORY"
+            "workflow=$env:GITHUB_WORKFLOW"
+            "run_id=$env:GITHUB_RUN_ID"
+            "run_attempt=$env:GITHUB_RUN_ATTEMPT"
+            "runner_os=$env:RUNNER_OS"
+            "bundle=msi"
+            "asset=$assetName"
+            "sha256=$hash"
+          ) | Set-Content -LiteralPath $provenancePath -Encoding utf8
+
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+          "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          "provenance_name=$provenanceName" >> $env:GITHUB_OUTPUT
+          "artifact_dir=$artifactDir" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.product-name }}-${{ needs.release.outputs.version }}-windows-x64
+          path: ${{ steps.package.outputs.artifact_dir }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach validated assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.release_token || github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
+          ASSET_NAME: ${{ steps.package.outputs.asset_name }}
+          CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
+          PROVENANCE_NAME: ${{ steps.package.outputs.provenance_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $files = @(
+            (Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:PROVENANCE_NAME)
+          )
+
+          gh release upload $env:TAG_NAME @files --repo $env:GITHUB_REPOSITORY --clobber
+)
+            $revision = if ($counterMatch.Success) {
+              [int]$counterMatch.Groups['counter'].Value
+            }
+            else {
+              0
+            }
+
+            if ($revision -gt 65534) {
+              throw "Prerelease counter must be between 0 and 65534 for MSI packaging: $env:VERSION"
+            }
+          }
+
+          $wixVersion = "$major.$minor.$patch.$revision"
+          Write-Host "Tauri app version: $env:VERSION"
+          Write-Host "WiX MSI version: $wixVersion"
+
           $working = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY))
           $versionConfig = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-version.json'
-          @{ version = $env:VERSION } |
-            ConvertTo-Json -Compress |
+          @{
+            version = $env:VERSION
+            bundle = @{
+              windows = @{
+                wix = @{
+                  version = $wixVersion
+                }
+              }
+            }
+          } |
+            ConvertTo-Json -Depth 8 -Compress |
             Set-Content -LiteralPath $versionConfig -Encoding utf8
 
           Push-Location $working
