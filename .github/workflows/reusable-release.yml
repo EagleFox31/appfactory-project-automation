@@ -33,6 +33,16 @@ on:
         required: false
         type: string
         default: ""
+      config-file:
+        description: Optional Release Please manifest config path in the consumer repository. When set, manifest mode is used.
+        required: false
+        type: string
+        default: ""
+      manifest-file:
+        description: Release Please manifest version file used with config-file.
+        required: false
+        type: string
+        default: .release-please-manifest.json
     secrets:
       release_token:
         description: Optional token used instead of GITHUB_TOKEN so release PRs can trigger normal CI.
@@ -66,16 +76,27 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      release_pr_created: ${{ steps.release.outputs.prs_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      release_sha: ${{ steps.release.outputs.sha }}
-      release_url: ${{ steps.release.outputs.html_url }}
+      release_created: ${{ steps.release-manifest.outputs.release_created || steps.release-direct.outputs.release_created }}
+      release_pr_created: ${{ steps.release-manifest.outputs.prs_created || steps.release-direct.outputs.prs_created }}
+      tag_name: ${{ steps.release-manifest.outputs.tag_name || steps.release-direct.outputs.tag_name }}
+      version: ${{ steps.release-manifest.outputs.version || steps.release-direct.outputs.version }}
+      release_sha: ${{ steps.release-manifest.outputs.sha || steps.release-direct.outputs.sha }}
+      release_url: ${{ steps.release-manifest.outputs.html_url || steps.release-direct.outputs.html_url }}
 
     steps:
+      - name: Prepare or publish semantic release from manifest config
+        if: inputs.config-file != ''
+        id: release-manifest
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.release_token || github.token }}
+          target-branch: ${{ inputs.target-branch }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+
       - name: Prepare or publish semantic release
-        id: release
+        if: inputs.config-file == ''
+        id: release-direct
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.release_token || github.token }}
