@@ -166,10 +166,56 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          $match = [regex]::Match(
+            $env:VERSION,
+            '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$'
+          )
+          if (-not $match.Success) {
+            throw "Release version is not valid SemVer: $env:VERSION"
+          }
+
+          $major = [int]$match.Groups['major'].Value
+          $minor = [int]$match.Groups['minor'].Value
+          $patch = [int]$match.Groups['patch'].Value
+          if ($major -gt 255 -or $minor -gt 255 -or $patch -gt 65535) {
+            throw "Release version exceeds Windows MSI version bounds: $env:VERSION"
+          }
+
+          $prerelease = $match.Groups['prerelease'].Value
+          if ([string]::IsNullOrWhiteSpace($prerelease)) {
+            $revision = 65535
+          }
+          else {
+            $counterMatch = [regex]::Match($prerelease, '(?:^|\.)(?<counter>\d+)$')
+            $revision = if ($counterMatch.Success) {
+              [int]$counterMatch.Groups['counter'].Value
+            }
+            else {
+              0
+            }
+
+            if ($revision -gt 65534) {
+              throw "Prerelease counter must be between 0 and 65534 for MSI packaging: $env:VERSION"
+            }
+          }
+
+          $wixVersion = "$major.$minor.$patch.$revision"
+          Write-Host "Tauri app version: $env:VERSION"
+          Write-Host "WiX MSI version: $wixVersion"
+
           $working = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY))
           $versionConfig = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-version.json'
-          @{ version = $env:VERSION } |
-            ConvertTo-Json -Compress |
+          @{
+            version = $env:VERSION
+            bundle = @{
+              windows = @{
+                wix = @{
+                  version = $wixVersion
+                }
+              }
+            }
+          } |
+            ConvertTo-Json -Depth 8 -Compress |
             Set-Content -LiteralPath $versionConfig -Encoding utf8
 
           Push-Location $working
