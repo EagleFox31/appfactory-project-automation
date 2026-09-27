@@ -12,7 +12,7 @@ test('Tauri release workflow preserves release integrity boundaries', async () =
   assert.match(workflow, /uses: \.\/\.github\/workflows\/reusable-release\.yml/);
   assert.match(workflow, /ref: \$\{\{ needs\.release\.outputs\.release_sha \}\}/);
   assert.match(workflow, /npx --no-install tauri build --bundles msi/);
-  assert.match(workflow, /wix = \{/);
+  assert.match(workflow, /wix = @\\{/));
   assert.match(workflow, /version = \$wixVersion/);
   assert.match(workflow, /\$revision = 65535/);
   assert.match(workflow, /Prerelease counter must be between 0 and 65534/);
