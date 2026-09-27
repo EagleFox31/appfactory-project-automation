@@ -108,6 +108,17 @@ When Release Please creates a GitHub Release, the workflow:
 
 The workflow does not accept arbitrary build flags or arbitrary validation commands from consumers. Product-specific behavior belongs in the product's checked-in Tauri, Cargo and npm configuration.
 
+### Windows MSI version mapping
+
+The product keeps the exact semantic release version in Tauri, including prerelease identifiers such as `0.1.0-beta.2`. WiX/MSI uses a separate numeric version, so AppFactory derives it deterministically:
+
+- `0.1.0-beta.1` → `0.1.0.1`
+- `0.1.0-beta.2` → `0.1.0.2`
+- a prerelease without a trailing numeric counter → revision `0`
+- stable `0.1.0` → `0.1.0.65535`
+
+Revision `65535` is reserved for the stable release, ensuring that the stable installer sorts after prereleases of the same semantic base. AppFactory validates the MSI field bounds before the build starts.
+
 ### Tauri release inputs
 
 | Input | Required | Default | Purpose |
