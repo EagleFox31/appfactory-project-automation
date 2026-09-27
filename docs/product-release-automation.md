@@ -91,7 +91,7 @@ The workflow does not accept arbitrary extra command-line arguments. Product-spe
 
 Use `.github/workflows/release-tauri-desktop.yml` for a Tauri application that ships a Windows MSI.
 
-The first AppFactory Tauri contract is intentionally narrow: npm with `package-lock.json`, the standard `src-tauri` layout, and MSI packaging on `windows-latest`. Keeping the first contract constrained avoids arbitrary consumer shell input and makes the release path auditable.
+The AppFactory Tauri contract is intentionally narrow: npm, the standard `src-tauri` layout, and MSI packaging on `windows-latest`. A committed `package-lock.json` is preferred and enables `npm ci` plus npm dependency caching. Existing products without a lockfile may adopt the workflow incrementally; AppFactory logs an explicit warning and falls back to `npm install --no-audit --no-fund` until a lockfile is committed. No arbitrary consumer install command is accepted.
 
 When Release Please creates a GitHub Release, the workflow:
 

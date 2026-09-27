@@ -29,6 +29,17 @@ test('Tauri release workflow preserves release integrity boundaries', async () =
   assert.doesNotMatch(workflow, /\\\$\{\{/);
 });
 
+test('Tauri release workflow prefers lockfiles but supports legacy consumers', async () => {
+  const workflow = await readFile(tauriWorkflowPath, 'utf8');
+
+  assert.ok(workflow.includes("hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''"));
+  assert.ok(workflow.includes("hashFiles(format('{0}/package-lock.json', inputs.working-directory)) == ''"));
+  assert.ok(workflow.includes('run: npm ci --no-audit --no-fund'));
+  assert.ok(workflow.includes('npm install --no-audit --no-fund'));
+  assert.ok(workflow.includes('No package-lock.json found. Falling back to npm install'));
+  assert.ok(!workflow.includes('currently requires package-lock.json'));
+});
+
 test('Reusable semantic release supports manifest-config prerelease consumers', async () => {
   const workflow = await readFile(reusableReleasePath, 'utf8');
 

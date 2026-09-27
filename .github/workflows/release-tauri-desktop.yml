@@ -128,19 +128,23 @@ jobs:
             throw 'working-directory must contain package.json.'
           }
 
-          if (-not (Test-Path -LiteralPath (Join-Path $working 'package-lock.json') -PathType Leaf)) {
-            throw 'AppFactory Tauri release currently requires package-lock.json and npm ci.'
-          }
-
           if (-not (Test-Path -LiteralPath (Join-Path $working 'src-tauri/tauri.conf.json') -PathType Leaf)) {
             throw 'working-directory must contain src-tauri/tauri.conf.json.'
           }
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node with npm cache
+        if: hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Setup Node without npm cache
+        if: hashFiles(format('{0}/package-lock.json', inputs.working-directory)) == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
 
       - name: Cache Rust dependencies and Tauri build output
         uses: actions/cache@v4
@@ -154,9 +158,17 @@ jobs:
             ${{ runner.os }}-tauri-
             ${{ runner.os }}-cargo-
 
-      - name: Install frontend dependencies
+      - name: Install locked frontend dependencies
+        if: hashFiles(format('{0}/package-lock.json', inputs.working-directory)) != ''
         working-directory: ${{ inputs.working-directory }}
         run: npm ci --no-audit --no-fund
+
+      - name: Install frontend dependencies without lockfile
+        if: hashFiles(format('{0}/package-lock.json', inputs.working-directory)) == ''
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "::warning::No package-lock.json found. Falling back to npm install; commit a lockfile for reproducible releases."
+          npm install --no-audit --no-fund
 
       - name: Build versioned Windows MSI
         shell: pwsh
