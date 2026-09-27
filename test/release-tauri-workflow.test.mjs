@@ -16,8 +16,12 @@ test('Tauri release workflow preserves release integrity boundaries', async () =
   assert.ok(workflow.includes('version = $wixVersion'));
   assert.ok(workflow.includes('$revision = 65535'));
   assert.ok(workflow.includes('Prerelease counter must be between 0 and 65534'));
-  assert.match(workflow, /msiexec\.exe \/i/);
-  assert.match(workflow, /msiexec\.exe \/x/);
+  assert.match(workflow, /Start-Process -FilePath 'msiexec\.exe'/);
+  assert.ok(workflow.includes("-ArgumentList @('/i', $quotedMsi, '/qn', '/norestart')"));
+  assert.ok(workflow.includes("-ArgumentList @('/x', $quotedMsi, '/qn', '/norestart')"));
+  assert.ok(workflow.includes('$installExit = $install.ExitCode'));
+  assert.ok(workflow.includes('$uninstallExit = $uninstall.ExitCode'));
+  assert.doesNotMatch(workflow, /msiexec\.exe[\s\S]{0,300}\$LASTEXITCODE/);
   assert.match(workflow, /Get-FileHash .* -Algorithm SHA256/);
   assert.match(workflow, /build-provenance\.txt/);
   assert.match(workflow, /gh release upload/);

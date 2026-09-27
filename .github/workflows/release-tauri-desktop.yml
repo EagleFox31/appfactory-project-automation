@@ -265,14 +265,20 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          & msiexec.exe /i $env:MSI_PATH /qn /norestart
-          $installExit = $LASTEXITCODE
+          $quotedMsi = '"' + $env:MSI_PATH + '"'
+
+          $install = Start-Process -FilePath 'msiexec.exe' `
+            -ArgumentList @('/i', $quotedMsi, '/qn', '/norestart') `
+            -Wait -PassThru -NoNewWindow
+          $installExit = $install.ExitCode
           if ($installExit -notin @(0, 3010)) {
             throw "MSI installation failed with exit code $installExit."
           }
 
-          & msiexec.exe /x $env:MSI_PATH /qn /norestart
-          $uninstallExit = $LASTEXITCODE
+          $uninstall = Start-Process -FilePath 'msiexec.exe' `
+            -ArgumentList @('/x', $quotedMsi, '/qn', '/norestart') `
+            -Wait -PassThru -NoNewWindow
+          $uninstallExit = $uninstall.ExitCode
           if ($uninstallExit -notin @(0, 3010)) {
             throw "MSI uninstall failed with exit code $uninstallExit."
           }
