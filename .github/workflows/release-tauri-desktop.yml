@@ -1,0 +1,299 @@
+name: AppFactory Tauri desktop release
+
+on:
+  workflow_call:
+    inputs:
+      product-name:
+        description: Safe product name used as the release asset filename prefix.
+        required: true
+        type: string
+      working-directory:
+        description: Relative directory containing package.json and src-tauri.
+        required: false
+        type: string
+        default: .
+      node-version:
+        description: Node.js version installed on the Windows release runner.
+        required: false
+        type: string
+        default: "24"
+      target-branch:
+        description: Branch maintained by Release Please.
+        required: false
+        type: string
+        default: main
+      release-as:
+        description: Optional one-time version override when direct Release Please mode is used.
+        required: false
+        type: string
+        default: ""
+      release-config-file:
+        description: Optional Release Please manifest config path in the consumer repository.
+        required: false
+        type: string
+        default: ""
+      release-manifest-file:
+        description: Release Please manifest version file used with release-config-file.
+        required: false
+        type: string
+        default: .release-please-manifest.json
+    secrets:
+      release_token:
+        description: Optional token used instead of GITHUB_TOKEN so release PRs can trigger normal CI.
+        required: false
+    outputs:
+      release_created:
+        description: Whether a GitHub Release was created.
+        value: ${{ jobs.release.outputs.release_created }}
+      tag_name:
+        description: Published Git tag.
+        value: ${{ jobs.release.outputs.tag_name }}
+      version:
+        description: Published semantic version.
+        value: ${{ jobs.release.outputs.version }}
+      asset_name:
+        description: Versioned Windows MSI attached to the release.
+        value: ${{ jobs.build.outputs.asset_name }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/reusable-release.yml
+    with:
+      release-type: simple
+      target-branch: ${{ inputs.target-branch }}
+      path: .
+      release-as: ${{ inputs.release-as }}
+      config-file: ${{ inputs.release-config-file }}
+      manifest-file: ${{ inputs.release-manifest-file }}
+    secrets:
+      release_token: ${{ secrets.release_token }}
+
+  build:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    outputs:
+      asset_name: ${{ steps.package.outputs.asset_name }}
+
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate release inputs
+        shell: pwsh
+        env:
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:PRODUCT_NAME -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$') {
+            throw 'product-name must use only letters, numbers, dot, underscore or hyphen and be at most 80 characters.'
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:WORKING_DIRECTORY) -or
+              [System.IO.Path]::IsPathRooted($env:WORKING_DIRECTORY) -or
+              $env:WORKING_DIRECTORY -match '(^|[\\/])\.\.([\\/]|$)') {
+            throw 'working-directory must be a relative path inside the consumer repository.'
+          }
+
+          if ($env:VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw "Release Please produced an unsupported semantic version: $env:VERSION"
+          }
+
+          $workspace = [System.IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $workspacePrefix = $workspace.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+          $working = [System.IO.Path]::GetFullPath((Join-Path $workspace $env:WORKING_DIRECTORY))
+
+          if ($working -ne $workspace -and -not $working.StartsWith($workspacePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Resolved working-directory escapes the GitHub workspace.'
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $working 'package.json') -PathType Leaf)) {
+            throw 'working-directory must contain package.json.'
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $working 'package-lock.json') -PathType Leaf)) {
+            throw 'AppFactory Tauri release currently requires package-lock.json and npm ci.'
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $working 'src-tauri/tauri.conf.json') -PathType Leaf)) {
+            throw 'working-directory must contain src-tauri/tauri.conf.json.'
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Cache Rust dependencies and Tauri build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ inputs.working-directory }}/src-tauri/target
+          key: ${{ runner.os }}-tauri-${{ hashFiles(format('{0}/src-tauri/Cargo.toml', inputs.working-directory), format('{0}/src-tauri/Cargo.lock', inputs.working-directory)) }}
+          restore-keys: |
+            ${{ runner.os }}-tauri-
+            ${{ runner.os }}-cargo-
+
+      - name: Install frontend dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Build versioned Windows MSI
+        shell: pwsh
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $working = [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY))
+          $versionConfig = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-version.json'
+          @{ version = $env:VERSION } |
+            ConvertTo-Json -Compress |
+            Set-Content -LiteralPath $versionConfig -Encoding utf8
+
+          Push-Location $working
+          try {
+            & npx --no-install tauri build --bundles msi --config $versionConfig
+            if ($LASTEXITCODE -ne 0) {
+              throw "Tauri build failed with exit code $LASTEXITCODE."
+            }
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Locate generated MSI
+        id: installer
+        shell: pwsh
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $bundleDir = Join-Path (Join-Path $env:GITHUB_WORKSPACE $env:WORKING_DIRECTORY) 'src-tauri/target/release/bundle/msi'
+          $installers = @(Get-ChildItem -LiteralPath $bundleDir -File -Filter '*.msi')
+
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one MSI in $bundleDir, found $($installers.Count)."
+          }
+
+          "path=$($installers[0].FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Verify clean MSI install and uninstall
+        shell: pwsh
+        env:
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & msiexec.exe /i $env:MSI_PATH /qn /norestart
+          $installExit = $LASTEXITCODE
+          if ($installExit -notin @(0, 3010)) {
+            throw "MSI installation failed with exit code $installExit."
+          }
+
+          & msiexec.exe /x $env:MSI_PATH /qn /norestart
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -notin @(0, 3010)) {
+            throw "MSI uninstall failed with exit code $uninstallExit."
+          }
+
+      - name: Package checksum and provenance
+        id: package
+        shell: pwsh
+        env:
+          PRODUCT_NAME: ${{ inputs.product-name }}
+          VERSION: ${{ needs.release.outputs.version }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+          MSI_PATH: ${{ steps.installer.outputs.path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'appfactory-tauri-release'
+          if (Test-Path $artifactDir) {
+            Remove-Item $artifactDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $artifactDir | Out-Null
+
+          $assetName = "$env:PRODUCT_NAME-v$env:VERSION-windows-x64.msi"
+          $checksumName = 'SHA256SUMS.txt'
+          $provenanceName = "$env:PRODUCT_NAME-v$env:VERSION-build-provenance.txt"
+
+          $assetPath = Join-Path $artifactDir $assetName
+          $checksumPath = Join-Path $artifactDir $checksumName
+          $provenancePath = Join-Path $artifactDir $provenanceName
+
+          Copy-Item -LiteralPath $env:MSI_PATH -Destination $assetPath
+
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          @(
+            "product=$env:PRODUCT_NAME"
+            "version=$env:VERSION"
+            "tag=$env:TAG_NAME"
+            "release_sha=$env:RELEASE_SHA"
+            "repository=$env:GITHUB_REPOSITORY"
+            "workflow=$env:GITHUB_WORKFLOW"
+            "run_id=$env:GITHUB_RUN_ID"
+            "run_attempt=$env:GITHUB_RUN_ATTEMPT"
+            "runner_os=$env:RUNNER_OS"
+            "bundle=msi"
+            "asset=$assetName"
+            "sha256=$hash"
+          ) | Set-Content -LiteralPath $provenancePath -Encoding utf8
+
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+          "checksum_name=$checksumName" >> $env:GITHUB_OUTPUT
+          "provenance_name=$provenanceName" >> $env:GITHUB_OUTPUT
+          "artifact_dir=$artifactDir" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.product-name }}-${{ needs.release.outputs.version }}-windows-x64
+          path: ${{ steps.package.outputs.artifact_dir }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach validated assets to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.release_token || github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          ARTIFACT_DIR: ${{ steps.package.outputs.artifact_dir }}
+          ASSET_NAME: ${{ steps.package.outputs.asset_name }}
+          CHECKSUM_NAME: ${{ steps.package.outputs.checksum_name }}
+          PROVENANCE_NAME: ${{ steps.package.outputs.provenance_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $files = @(
+            (Join-Path $env:ARTIFACT_DIR $env:ASSET_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:CHECKSUM_NAME),
+            (Join-Path $env:ARTIFACT_DIR $env:PROVENANCE_NAME)
+          )
+
+          gh release upload $env:TAG_NAME @files --repo $env:GITHUB_REPOSITORY --clobber

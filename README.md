@@ -21,6 +21,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 | **Repository Governance** | `EagleFox31/appfactory-project-automation@v1` | Plan and reconcile default-branch protection while preserving existing repository rules |
 | **Standard product releases** | `.github/workflows/reusable-release.yml@v1` | Release Please, semantic versioning, tags and GitHub Releases |
 | **.NET desktop releases** | `.github/workflows/release-dotnet-desktop.yml@v1` | Release Please + deterministic `dotnet publish` + versioned ZIP + SHA-256 checksum |
+| **Tauri desktop releases** | `.github/workflows/release-tauri-desktop.yml@v1` | Release Please + exact-SHA Tauri MSI build + install/uninstall validation + checksum/provenance |
 
 The capabilities are independent. A repository can adopt Project automation, governance and release automation separately.
 
@@ -234,6 +235,22 @@ jobs:
 ```
 
 See [`examples/dotnet-desktop-release.yml`](examples/dotnet-desktop-release.yml) and [`docs/product-release-automation.md`](docs/product-release-automation.md) for the complete setup, token behavior and supported inputs.
+
+### Tauri desktop releases
+
+Use [`release-tauri-desktop.yml`](.github/workflows/release-tauri-desktop.yml) for Windows Tauri products that ship an MSI.
+
+The workflow keeps release orchestration in AppFactory while preserving product-specific code in the consumer repository. It:
+
+- uses the existing Release Please layer for semantic versioning and release PRs;
+- checks out the exact tagged release SHA;
+- injects the semantic version into the Tauri build through a temporary config override;
+- runs `npm ci` and a local `tauri build --bundles msi`;
+- performs silent MSI install/uninstall validation on the Windows runner;
+- publishes a canonical versioned MSI, `SHA256SUMS.txt` and build provenance;
+- uploads the validated files both as an Actions artifact and as GitHub Release assets.
+
+Manifest-driven Release Please is supported for prerelease tracks such as beta channels. See [`examples/tauri-desktop-release.yml`](examples/tauri-desktop-release.yml).
 
 ## `appfactory-product` template
 

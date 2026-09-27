@@ -12,13 +12,22 @@ Consumer repository
 EagleFox31/appfactory-project-automation@v1
 ├── reusable-release.yml
 │   └── Release Please → Release PR → SemVer tag → GitHub Release
-└── release-dotnet-desktop.yml
+├── release-dotnet-desktop.yml
+│   ├── reusable-release.yml
+│   ├── checkout exact release SHA
+│   ├── dotnet publish
+│   ├── versioned ZIP
+│   ├── optional standalone EXE
+│   ├── SHA-256 checksums
+│   ├── Actions artifact
+│   └── GitHub Release assets
+└── release-tauri-desktop.yml
     ├── reusable-release.yml
     ├── checkout exact release SHA
-    ├── dotnet publish
-    ├── versioned ZIP
-    ├── optional standalone EXE
-    ├── SHA-256 checksums
+    ├── semantic-version Tauri config override
+    ├── Windows MSI build
+    ├── install / uninstall validation
+    ├── SHA-256 checksum + provenance
     ├── Actions artifact
     └── GitHub Release assets
 ```
@@ -77,6 +86,60 @@ The workflow does not accept arbitrary extra command-line arguments. Product-spe
 | `standalone-executable` | no | `false` | Also publish a self-contained single-file `.exe` asset |
 | `target-branch` | no | `main` | Release Please target branch |
 | `release-as` | no | empty | One-time semantic version override |
+
+## Tauri desktop release workflow
+
+Use `.github/workflows/release-tauri-desktop.yml` for a Tauri application that ships a Windows MSI.
+
+The first AppFactory Tauri contract is intentionally narrow: npm with `package-lock.json`, the standard `src-tauri` layout, and MSI packaging on `windows-latest`. Keeping the first contract constrained avoids arbitrary consumer shell input and makes the release path auditable.
+
+When Release Please creates a GitHub Release, the workflow:
+
+1. checks out the exact SHA tagged by Release Please;
+2. validates the product name, working directory and semantic release version;
+3. runs `npm ci` from the consumer application directory;
+4. creates a temporary Tauri config containing the release version;
+5. runs the repository-local Tauri CLI with `--bundles msi`;
+6. requires exactly one generated MSI;
+7. silently installs and uninstalls the MSI before publication;
+8. renames the installer to `<Product>-v<Version>-windows-x64.msi`;
+9. generates `SHA256SUMS.txt` and a build-provenance file;
+10. uploads the files as an Actions artifact and attaches them to the GitHub Release.
+
+The workflow does not accept arbitrary build flags or arbitrary validation commands from consumers. Product-specific behavior belongs in the product's checked-in Tauri, Cargo and npm configuration.
+
+### Tauri release inputs
+
+| Input | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `product-name` | yes | — | Safe release asset prefix |
+| `working-directory` | no | `.` | Relative directory containing `package.json` and `src-tauri` |
+| `node-version` | no | `24` | Node.js version on the release runner |
+| `target-branch` | no | `main` | Release Please target branch |
+| `release-as` | no | empty | One-time direct-mode semantic version override |
+| `release-config-file` | no | empty | Enables manifest-driven Release Please from the consumer config |
+| `release-manifest-file` | no | `.release-please-manifest.json` | Version manifest used with the config file |
+
+### Beta / prerelease channels
+
+AppFactory's generic release layer now exposes Release Please manifest mode. A consumer that needs a beta channel can keep the policy in its own `release-please-config.json`, for example:
+
+```json
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "versioning": "prerelease",
+      "prerelease": true,
+      "prerelease-type": "beta"
+    }
+  }
+}
+```
+
+Seed `.release-please-manifest.json` with the last published version before enabling automation. Release Please then owns subsequent prerelease bumps from Conventional Commits rather than hard-coding a beta tag in the product workflow.
+
+See `examples/tauri-desktop-release.yml` for the thin consumer wrapper.
 
 ## Consumer workflow
 
@@ -145,4 +208,4 @@ The generated SHA-256 files let users or later installer tooling verify the ZIP 
 
 ## Current scope
 
-The first artifact builder targets .NET desktop products on a Windows runner. The release orchestration itself is language-agnostic. Future AppFactory builders can add Node/Electron, Tauri, macOS notarization, MSIX/MSI packaging and code signing without changing the product-side release contract.
+AppFactory currently provides deterministic Windows builders for .NET desktop products and Tauri MSI products. The release orchestration itself remains language-agnostic. Future builders can add Node/Electron, macOS notarization, MSIX/NSIS packaging and code signing without changing the product-side release contract.
