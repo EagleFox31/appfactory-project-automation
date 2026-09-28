@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "fallback": "all",
+  "ignorePaths": [
+    "README.md",
+    "docs/**",
+    ".github/ISSUE_TEMPLATE/**"
+  ],
+  "surfaces": {
+    "shared-contracts": {
+      "paths": [
+        "packages/contracts/**"
+      ],
+      "gates": []
+    },
+    "landing": {
+      "paths": [
+        "apps/landing/**",
+        "scripts/landing/**",
+        ".github/workflows/landing*.yml"
+      ],
+      "gates": [
+        "landing-ci",
+        "pages"
+      ]
+    },
+    "desktop": {
+      "paths": [
+        "src/**",
+        "src-tauri/**",
+        "package.json",
+        "package-lock.json",
+        "index.html",
+        "vite.config.*",
+        "vitest.config.*",
+        "tsconfig*.json",
+        ".github/workflows/ci-frontend.yml",
+        ".github/workflows/ci-rust.yml",
+        ".github/workflows/security.yml",
+        ".github/workflows/beta-windows.yml"
+      ],
+      "gates": [
+        "frontend",
+        "rust",
+        "security",
+        "windows-installer"
+      ],
+      "dependsOn": [
+        "shared-contracts"
+      ]
+    },
+    "registry": {
+      "paths": [
+        "services/registry-api/**"
+      ],
+      "gates": [
+        "registry",
+        "security"
+      ],
+      "dependsOn": [
+        "shared-contracts"
+      ]
+    },
+    "release": {
+      "paths": [
+        ".release-please-manifest.json",
+        "release-please-config.json",
+        "scripts/release/**",
+        ".github/workflows/release.yml"
+      ],
+      "gates": [
+        "product-release"
+      ],
+      "dependsOn": [
+        "desktop"
+      ]
+    }
+  }
+}
