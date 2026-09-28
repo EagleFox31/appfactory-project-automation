@@ -1,0 +1,111 @@
+name: AppFactory impact analysis
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        description: Immutable AppFactory commit SHA or reviewed ref containing the impact engine.
+        required: true
+        type: string
+      config_path:
+        description: Consumer repository impact map.
+        required: false
+        default: .github/appfactory-impact.json
+        type: string
+      mode:
+        description: auto computes a git diff; all intentionally fans out to every configured surface.
+        required: false
+        default: auto
+        type: string
+      base_sha:
+        description: Optional explicit comparison base SHA.
+        required: false
+        default: ""
+        type: string
+      head_sha:
+        description: Optional explicit comparison head SHA.
+        required: false
+        default: ""
+        type: string
+    outputs:
+      surfaces:
+        description: JSON array of impacted surface names.
+        value: ${{ jobs.analyze.outputs.surfaces }}
+      gates:
+        description: JSON array of required gate names.
+        value: ${{ jobs.analyze.outputs.gates }}
+      changed_files_count:
+        description: Number of changed files considered by the diff.
+        value: ${{ jobs.analyze.outputs.changed_files_count }}
+      fallback_applied:
+        description: Whether safe fallback-to-all was applied.
+        value: ${{ jobs.analyze.outputs.fallback_applied }}
+      analysis:
+        description: Full compact JSON analysis payload.
+        value: ${{ jobs.analyze.outputs.analysis }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    outputs:
+      surfaces: ${{ steps.impact.outputs.surfaces }}
+      gates: ${{ steps.impact.outputs.gates }}
+      changed_files_count: ${{ steps.impact.outputs.changed_files_count }}
+      fallback_applied: ${{ steps.impact.outputs.fallback_applied }}
+      analysis: ${{ steps.impact.outputs.analysis }}
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout trusted AppFactory runtime
+        uses: actions/checkout@v7
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory-impact
+          persist-credentials: false
+
+      - name: Analyze changed surfaces
+        id: impact
+        shell: bash
+        env:
+          CONFIG_PATH: ${{ inputs.config_path }}
+          MODE: ${{ inputs.mode }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          args=(--config "$CONFIG_PATH" --mode "$MODE")
+
+          if [[ -n "$BASE_SHA" || -n "$HEAD_SHA" ]]; then
+            if [[ -z "$BASE_SHA" || -z "$HEAD_SHA" ]]; then
+              echo "::error title=Incomplete impact range::base_sha and head_sha must be supplied together."
+              exit 1
+            fi
+            args+=(--base "$BASE_SHA" --head "$HEAD_SHA")
+          fi
+
+          node .appfactory-impact/scripts/impact/analyze.mjs "${args[@]}"
+
+      - name: Publish impact summary
+        shell: bash
+        env:
+          SURFACES: ${{ steps.impact.outputs.surfaces }}
+          GATES: ${{ steps.impact.outputs.gates }}
+          CHANGED: ${{ steps.impact.outputs.changed_files_count }}
+          FALLBACK: ${{ steps.impact.outputs.fallback_applied }}
+        run: |
+          {
+            echo "## AppFactory change impact"
+            echo
+            echo "- Changed files: `$CHANGED`"
+            echo "- Impacted surfaces: `$SURFACES`"
+            echo "- Required gates: `$GATES`"
+            echo "- Safe fallback applied: `$FALLBACK`"
+          } >> "$GITHUB_STEP_SUMMARY"
