@@ -22,8 +22,11 @@ Project automation is the main product and the Marketplace Action. This reposito
 | **Standard product releases** | `.github/workflows/reusable-release.yml@v1` | Release Please, semantic versioning, tags and GitHub Releases |
 | **.NET desktop releases** | `.github/workflows/release-dotnet-desktop.yml@v1` | Release Please + deterministic `dotnet publish` + versioned ZIP + SHA-256 checksum |
 | **Tauri desktop releases** | `.github/workflows/release-tauri-desktop.yml@v1` | Release Please + exact-SHA Tauri MSI build + install/uninstall validation + checksum/provenance |
+| **Impact-Aware CI** | `.github/workflows/reusable-impact-analysis.yml@v1` | Change-impact analysis that maps changed paths to affected surfaces and required gates before expensive CI/CD work runs |
 
-The capabilities are independent. A repository can adopt Project automation, governance and release automation separately.
+The capabilities are independent. A repository can adopt Project automation, governance, impact-aware CI and release automation separately.
+
+Impact-Aware CI implements the RAIDER change-scoped execution rule without copying path logic into every workflow. A consumer owns a small `.github/appfactory-impact.json`; AppFactory computes `changed paths → impacted surfaces → required gates`, including dependency propagation and safe fallback for unclassified changes. See [Impact-Aware CI](docs/impact-aware-ci.md) and the [consumer example](examples/impact-aware-ci.yml).
 
 Repository Governance is opt-in and off by default. Start with the [beginner-first governance quick start](docs/repository-governance-quick-start.md); its versioned policy and internal safety model are documented separately in [Repository Governance architecture](docs/architecture/repository-governance.md). Initial adoption remains manual: `plan` is read-only and only an explicit `apply` may reconcile the AppFactory-managed Ruleset. After approval, consumers can opt into the tested continuous workflow for default-branch configuration changes and scheduled drift repair. Governance supports both the existing dedicated PAT and [short-lived GitHub App authentication](docs/github-app-onboarding.md).
 
