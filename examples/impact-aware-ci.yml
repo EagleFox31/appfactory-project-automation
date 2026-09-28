@@ -1,0 +1,58 @@
+name: Impact-aware CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  impact:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-impact-analysis.yml@REVIEWED_APPFACTORY_SHA
+    with:
+      appfactory_ref: REVIEWED_APPFACTORY_SHA
+      config_path: .github/appfactory-impact.json
+      mode: ${{ github.event_name == 'workflow_dispatch' && 'all' || 'auto' }}
+
+  landing:
+    needs: impact
+    if: ${{ contains(fromJSON(needs.impact.outputs.gates), 'landing-ci') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node scripts/landing/build-stitch.mjs
+      - run: node scripts/landing/validate.mjs
+
+  frontend:
+    needs: impact
+    if: ${{ contains(fromJSON(needs.impact.outputs.gates), 'frontend') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  registry:
+    needs: impact
+    if: ${{ contains(fromJSON(needs.impact.outputs.gates), 'registry') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "Run the repository-specific API/database validation here."
+
+  full-manual-check:
+    needs: impact
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Manual dispatch deliberately selected every configured surface."
