@@ -341,3 +341,39 @@ A workflow contract test rejects the old repository-wide concurrency key. Event 
 
 **RAIDER lesson**  
 Idempotency alone does not guarantee durability when the scheduler can discard work before execution. Queue/concurrency semantics are part of the automation contract and must be tested explicitly.
+
+### LESSON-2026-010 — Managed runtime state must be reconciled after downstream deploys
+
+- **Date:** 2026-09-29
+- **Category:** architecture-operations
+- **Status:** prevention-added
+- **Related:** Trigenys/appfactory#77, Trigenys/appfactory#78, Trigenys/product-identity#45
+
+**Context**
+
+AppFactory centrally owns a Cloudflare Hyperdrive binding for a product Worker, while the product repository independently deploys Worker code through Wrangler. The product repository intentionally does not know the AppFactory-created Hyperdrive resource ID.
+
+**Failure / near miss**
+
+AppFactory could provision and verify the `HYPERDRIVE` binding successfully, then a later repository-driven Worker deployment could replace Worker settings and remove or drift that binding. A release gate that only checked readiness afterwards would detect the damage, but the same deployment path could recreate it on every release.
+
+**Root cause**
+
+Control-plane ownership and deployment-time source of truth were split across two writers without an explicit post-deploy reconciliation boundary. Provisioning was treated as durable state even though a downstream deploy could rewrite the same runtime configuration surface.
+
+**Resolution**
+
+The AppFactory release path now treats centrally managed runtime bindings as reconciled state: after the Worker deployment reaches success, AppFactory reasserts the marker-backed Hyperdrive binding, preserves unrelated bindings, verifies the expected resource identity, and only then runs application readiness.
+
+**Prevention**
+
+Post-deploy tests require missing and drifted managed bindings to converge before readiness. Product repositories remain unable to supply or persist centrally owned resource IDs, and release evidence records whether reconciliation was required.
+
+**Generalized lesson**
+
+When one system owns runtime configuration and another system can redeploy the workload, successful provisioning is not enough. The owner of each managed runtime surface must reassert and verify its state after every downstream operation capable of rewriting that surface.
+
+**Derived principle / standard change**
+
+RAIDER durability reviews must identify the authoritative writer for each mutable runtime surface, enumerate downstream operations that can overwrite it, and require post-operation reconciliation before readiness. Detection-only gates are insufficient when the automation already owns enough authority to repair the drift.
+
