@@ -12,6 +12,11 @@ on:
         required: false
         default: .github/appfactory-impact.json
         type: string
+      checkout_ref:
+        description: Optional immutable consumer ref to analyze. When omitted, preserve the caller event checkout behavior.
+        required: false
+        default: ""
+        type: string
       mode:
         description: auto computes a git diff; all intentionally fans out to every configured surface.
         required: false
@@ -60,6 +65,7 @@ jobs:
       - name: Checkout consumer repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.checkout_ref }}
           fetch-depth: 0
           persist-credentials: false
 
