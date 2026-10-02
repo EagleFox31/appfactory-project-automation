@@ -70,6 +70,7 @@ jobs:
     with:
       appfactory_ref: <same-reviewed-sha>
       config_path: .github/appfactory-impact.json
+      checkout_ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
 ```
 
 The workflow exposes:
@@ -87,6 +88,8 @@ if: ${{ contains(fromJSON(needs.impact.outputs.gates), 'rust') }}
 ```
 
 The workflow computes pull-request and push ranges from the GitHub event. When a reliable range is unavailable, it deliberately fans out to all configured surfaces. Manual runs should normally set `mode: all`.
+
+For chained workflows such as `workflow_run`, pass `checkout_ref` when the impact policy itself must come from the same immutable revision that was validated. A typical deployment caller passes the completed CI run's `head_sha` as both `checkout_ref` and `head_sha`, together with the matching comparison `base_sha`. When `checkout_ref` is omitted, existing event-based checkout behavior is unchanged.
 
 ## Why a dispatcher instead of copied path filters
 
