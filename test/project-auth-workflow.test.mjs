@@ -18,11 +18,15 @@ test('reusable Project workflow keeps token and broker providers explicit', () =
 });
 
 function workflowJob(name) {
-  const pattern = new RegExp(
-    `^  ${name}:[\\s\\S]*?(?=^  [a-z0-9-]+:|\\Z)`,
-    'm'
-  );
-  return reusable.match(pattern)?.[0] ?? '';
+  const marker = `  ${name}:\n`;
+  const start = reusable.indexOf(marker);
+  if (start < 0) return '';
+
+  const tail = reusable.slice(start + marker.length);
+  const nextJobOffset = tail.search(/^  [a-z0-9-]+:\n/m);
+  return nextJobOffset < 0
+    ? reusable.slice(start)
+    : reusable.slice(start, start + marker.length + nextJobOffset);
 }
 
 test('OIDC permission is isolated to brokered Project bootstrap and sync jobs', () => {
