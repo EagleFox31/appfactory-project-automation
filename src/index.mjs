@@ -669,29 +669,71 @@ async function bootstrapProject(project, repository, { freshProject = false } = 
 
   await ensureRepositoryLinked(project, repository);
   await ensureProjectSchema(project, issues, { freshProject });
-  await ensureBoardView(project);
+
+  // Treat the board as the final bootstrap marker: if a run fails before the
+  // backlog import completes, the next serialized bootstrap still sees the
+  // Project as incomplete and safely retries the idempotent import.
   if (shouldImport) await importOpenIssues(project, issues);
+  await ensureBoardView(project);
 
   console.log(`AppFactory bootstrap complete for Project #${project.number}: ${project.title}`);
   return project;
 }
 
-async function handleIssueEvent(project) {
+function projectBootstrapComplete(project, repository) {
+  if (config.project.linkRepository !== false) {
+    const linked = project.repositories?.nodes?.some((candidate) => candidate.id === repository.id);
+    if (!linked) return false;
+  }
+
+  const definitions = bootstrapFieldDefinitions(config, []);
+  for (const definition of definitions) {
+    if (!findSingleSelectField(project, definition.name)) return false;
+  }
+
+  if (config.project.createBoardView !== false) {
+    const boardName = config.bootstrap?.boardViewName || 'AppFactory Board';
+    const hasBoard = project.views?.nodes?.some(
+      (view) => normalize(view.name) === normalize(boardName)
+    );
+    if (!hasBoard) return false;
+  }
+
+  return true;
+}
+
+async function schemaIssuesForCurrentEvent() {
+  if (eventName === 'issues') {
+    return event.issue ? [event.issue] : [];
+  }
+
+  if (eventName === 'workflow_dispatch' && manualIssueNumber) {
+    return [await loadIssue(manualIssueNumber)];
+  }
+
+  if (eventName === 'pull_request' && event.pull_request?.node_id) {
+    return closingIssuesForPullRequest(event.pull_request.node_id);
+  }
+
+  return [];
+}
+
+async function handleIssueEvent(project, { reconcileSchema = true } = {}) {
   const issue = event.issue;
   if (!issue?.node_id) throw new Error('Issue event does not contain issue.node_id.');
 
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
   const { itemId } = await ensureProjectItem(project.id, issue.node_id);
   const status = issueStatusForAction(event.action, config.statusTransitions);
   await applyIssueFields(project, issue, itemId, status);
   console.log(`Synced Issue #${issue.number}: ${issue.title}`);
 }
 
-async function handleManualIssue(project) {
+async function handleManualIssue(project, { reconcileSchema = true } = {}) {
   if (!manualIssueNumber) throw new Error('Manual execution requires a positive issue-number input.');
 
   const issue = await loadIssue(manualIssueNumber);
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
   const { itemId } = await ensureProjectItem(project.id, issue.id);
   const status = issue.state === 'CLOSED'
     ? config.statusTransitions.issueClosed
@@ -701,7 +743,7 @@ async function handleManualIssue(project) {
   console.log(`Manually synced Issue #${issue.number}: ${issue.title}`);
 }
 
-async function handlePullRequestEvent(project) {
+async function handlePullRequestEvent(project, { reconcileSchema = true } = {}) {
   const pullRequest = event.pull_request;
   if (!pullRequest?.node_id) throw new Error('Pull request event does not contain pull_request.node_id.');
 
@@ -711,7 +753,7 @@ async function handlePullRequestEvent(project) {
     return;
   }
 
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, issues);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, issues);
   const targetStatus = pullRequestTargetStatus(
     { action: event.action, merged: pullRequest.merged, draft: pullRequest.draft },
     config.statusTransitions
@@ -725,11 +767,68 @@ async function handlePullRequestEvent(project) {
   for (const issue of issues) {
     const { itemId } = await ensureProjectItem(project.id, issue.id);
     await applyIssueFields(project, issue, itemId, targetStatus);
-    console.log(`PR lifecycle moved Issue #${issue.number} → ${targetStatus}`);
+    console.log(`PR lifecycle moved Issue #${issue.number} -> ${targetStatus}`);
+  }
+}
+
+async function runProjectBootstrapPhase() {
+  const resolution = await resolveProject({ allowCreate: true });
+  const project = resolution.project;
+  const manualFullBootstrap = eventName === 'workflow_dispatch' && !manualIssueNumber;
+  const requiresFullBootstrap =
+    resolution.created || manualFullBootstrap || !projectBootstrapComplete(project, resolution.repository);
+
+  if (requiresFullBootstrap) {
+    await bootstrapProject(project, resolution.repository, { freshProject: resolution.created });
+    return;
+  }
+
+  // The reusable workflow serializes this phase across all Issue/PR runs.
+  // Only this phase is allowed to mutate schema, preventing lost option
+  // updates while preserving item-scoped concurrency for normal sync work.
+  const issues = await schemaIssuesForCurrentEvent();
+  await ensureRepositoryLinked(project, resolution.repository);
+  await ensureProjectSchema(project, issues, { freshProject: false });
+  await ensureBoardView(project);
+  console.log(`Serialized bootstrap reconciliation complete for Project #${project.number}: ${project.title}`);
+}
+
+async function runProjectSyncPhase() {
+  const resolution = await resolveProject({
+    allowCreate: false,
+    waitForExisting: isBootstrapEnabled(config)
+  });
+  const project = await fetchProject(resolution.project.id);
+
+  if (eventName === 'workflow_dispatch') {
+    if (manualIssueNumber) {
+      await handleManualIssue(project, { reconcileSchema: false });
+    } else if (isBootstrapEnabled(config)) {
+      console.log('Bootstrap-only workflow_dispatch already reconciled the Project; no item sync required.');
+    } else {
+      throw new Error('Manual execution requires issue-number unless project.bootstrap is enabled.');
+    }
+  } else if (eventName === 'issues') {
+    await handleIssueEvent(project, { reconcileSchema: false });
+  } else if (eventName === 'pull_request') {
+    await handlePullRequestEvent(project, { reconcileSchema: false });
+  } else {
+    console.log(`Unsupported event ${rawEventName}; nothing to do.`);
   }
 }
 
 async function runProjectAutomation() {
+  if (executionMode === 'bootstrap') {
+    await runProjectBootstrapPhase();
+    return;
+  }
+  if (executionMode === 'sync') {
+    await runProjectSyncPhase();
+    return;
+  }
+
+  // Backward-compatible single-pass behavior for consumers that invoke the
+  // Action directly instead of the reusable two-phase workflow.
   const resolution = await resolveProject();
   let project = resolution.project;
   let bootstrapAlreadyRan = false;
