@@ -29,6 +29,7 @@ const governanceAdministrationVerified =
   readActionInput('governance-administration-verified').trim().toLowerCase() === 'true';
 const governanceMode = normalizeGovernanceMode(readActionInput('governance-mode'));
 const configPath = path.resolve(readActionInput('config-path') || '.github/project-config.json');
+const executionMode = readActionInput('execution-mode') || 'auto';
 const manualIssueNumber = parseIssueNumber(readActionInput('issue-number') || process.env.MANUAL_ISSUE_NUMBER);
 const repositoryFullName = process.env.GITHUB_REPOSITORY;
 const rawEventName = process.env.GITHUB_EVENT_NAME;
@@ -37,6 +38,9 @@ const eventPath = process.env.GITHUB_EVENT_PATH;
 
 if (!repositoryFullName) throw new Error('GITHUB_REPOSITORY is not available.');
 if (!fs.existsSync(configPath)) throw new Error(`Project config not found: ${configPath}`);
+if (governanceMode === 'off' && !['auto', 'bootstrap', 'sync'].includes(executionMode)) {
+  throw new Error(`Invalid execution-mode "${executionMode}". Expected auto, bootstrap, or sync.`);
+}
 
 const token = governanceMode === 'off'
   ? await resolveProjectToken({
@@ -183,28 +187,57 @@ async function createProject(owner, repository) {
   return fetchProject(created.id);
 }
 
-async function resolveProject() {
-  const context = await loadProjectContext();
-  const projects = context.owner.projectsV2?.nodes ?? [];
-  const existing = projects.find((candidate) => candidate.title === config.project.title);
+async function resolveProject({ allowCreate = true, waitForExisting = false } = {}) {
+  const attempts = waitForExisting ? 20 : 1;
+  let lastContext;
 
-  if (existing) {
-    console.log(`Resolved ${context.owner.__typename} Project #${existing.number}: ${existing.title}`);
-    return { project: existing, created: false, ...context };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const context = await loadProjectContext();
+    lastContext = context;
+    const projects = context.owner.projectsV2?.nodes ?? [];
+    const matches = projects
+      .filter((candidate) => candidate.title === config.project.title)
+      .sort((left, right) => left.number - right.number);
+    const existing = matches[0];
+
+    if (existing) {
+      if (matches.length > 1) {
+        console.warn(
+          `Resolved ${matches.length} Projects named "${config.project.title}". ` +
+          `Using canonical lowest-number Project #${existing.number}; clean up older duplicate bootstrap artifacts.`
+        );
+      }
+      console.log(`Resolved ${context.owner.__typename} Project #${existing.number}: ${existing.title}`);
+      return { project: existing, created: false, ...context };
+    }
+
+    if (allowCreate) break;
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  const projects = lastContext?.owner?.projectsV2?.nodes ?? [];
+  if (!allowCreate) {
+    const visible = projects.map((candidate) => candidate.title).join(', ') || '(none visible)';
+    throw new Error(
+      `Project "${config.project.title}" did not become available after the serialized bootstrap phase. ` +
+      `Visible projects: ${visible}`
+    );
   }
 
   if (!isBootstrapEnabled(config)) {
     const visible = projects.map((candidate) => candidate.title).join(', ') || '(none visible)';
     throw new Error(
       `Project "${config.project.title}" was not found for ${config.project.owner} ` +
-      `(${context.owner.__typename}). Visible projects: ${visible}`
+      `(${lastContext.owner.__typename}). Visible projects: ${visible}`
     );
   }
 
   return {
-    project: await createProject(context.owner, context.repository),
+    project: await createProject(lastContext.owner, lastContext.repository),
     created: true,
-    ...context
+    ...lastContext
   };
 }
 
@@ -464,21 +497,6 @@ async function ensureProjectItem(projectId, contentId, itemMap = null) {
 async function setSingleSelect(project, itemId, configuredFieldName, optionName) {
   if (!configuredFieldName || !optionName) return;
 
-  const field = findSingleSelectField(project, configuredFieldName);
-  if (!field) {
-    console.warn(`Skipping missing/non-single-select Project field: ${configuredFieldName}`);
-    return;
-  }
-
-  const option = field.options.find((candidate) => normalize(candidate.name) === normalize(optionName));
-  if (!option) {
-    console.warn(
-      `Skipping ${configuredFieldName}="${optionName}" because that option does not exist. ` +
-      `Available: ${field.options.map((candidate) => candidate.name).join(', ')}`
-    );
-    return;
-  }
-
   const mutation = `
     mutation SetProjectField($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
       updateProjectV2ItemFieldValue(
@@ -492,13 +510,64 @@ async function setSingleSelect(project, itemId, configuredFieldName, optionName)
     }
   `;
 
-  await graphql(mutation, {
-    projectId: project.id,
-    itemId,
-    fieldId: field.id,
-    optionId: option.id
-  });
-  console.log(`Set ${configuredFieldName} → ${option.name}`);
+  const resolveFieldOption = (snapshot) => {
+    const field = findSingleSelectField(snapshot, configuredFieldName);
+    if (!field) {
+      console.warn(`Skipping missing/non-single-select Project field: ${configuredFieldName}`);
+      return null;
+    }
+
+    const option = field.options.find(
+      (candidate) => normalize(candidate.name) === normalize(optionName)
+    );
+    if (!option) {
+      console.warn(
+        `Skipping ${configuredFieldName}="${optionName}" because that option does not exist. ` +
+        `Available: ${field.options.map((candidate) => candidate.name).join(', ')}`
+      );
+      return null;
+    }
+    return { field, option };
+  };
+
+  let resolved = resolveFieldOption(project);
+  if (!resolved) return;
+
+  const writeValue = async ({ field, option }) => {
+    await graphql(mutation, {
+      projectId: project.id,
+      itemId,
+      fieldId: field.id,
+      optionId: option.id
+    });
+  };
+
+  try {
+    await writeValue(resolved);
+  } catch (error) {
+    if (!/single select option id does not belong to the field/i.test(String(error?.message ?? error))) {
+      throw error;
+    }
+
+    console.warn(
+      `Detected stale Project option id for ${configuredFieldName}; refreshing Project schema and retrying once.`
+    );
+    const refreshed = await fetchProject(project.id);
+    project.fields = refreshed.fields;
+    project.views = refreshed.views;
+    project.repositories = refreshed.repositories;
+
+    resolved = resolveFieldOption(project);
+    if (!resolved) {
+      throw new Error(
+        `Project schema changed while synchronizing ${configuredFieldName}="${optionName}". ` +
+        'The serialized bootstrap phase must reconcile the option before item synchronization.'
+      );
+    }
+    await writeValue(resolved);
+  }
+
+  console.log(`Set ${configuredFieldName} -> ${resolved.option.name}`);
 }
 
 async function applyIssueFields(project, issue, itemId, status) {
