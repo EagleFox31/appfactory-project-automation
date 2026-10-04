@@ -86,9 +86,47 @@ jobs:
               ;;
           esac
 
-  sync-token:
+  bootstrap-token:
     if: ${{ inputs.authentication == 'token' }}
     needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: project-bootstrap-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout AppFactory runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+
+      - name: Reconcile shared Project bootstrap state
+        uses: ./.appfactory
+        with:
+          token: ${{ secrets.project_token }}
+          project-authentication: token
+          config-path: ${{ inputs.config_path }}
+          issue-number: ${{ inputs.issue_number }}
+          execution-mode: bootstrap
+
+  sync-token:
+    if: ${{ always() && inputs.authentication == 'token' && needs.validate.result == 'success' && (needs.bootstrap-token.result == 'success' || needs.bootstrap-token.result == 'cancelled') }}
+    needs:
+      - validate
+      - bootstrap-token
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -110,17 +148,58 @@ jobs:
           path: .appfactory
           persist-credentials: false
 
-      - name: Synchronize GitHub Project
+      - name: Synchronize GitHub Project item
         uses: ./.appfactory
         with:
           token: ${{ secrets.project_token }}
           project-authentication: token
           config-path: ${{ inputs.config_path }}
           issue-number: ${{ inputs.issue_number }}
+          execution-mode: sync
 
-  sync-github-app-user:
+  bootstrap-github-app-user:
     if: ${{ inputs.authentication == 'github-app-user' || inputs.authentication == 'broker-user' }}
     needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: project-bootstrap-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout AppFactory runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+
+      - name: Reconcile shared Project bootstrap state
+        uses: ./.appfactory
+        with:
+          project-authentication: github-app-user
+          project-token-broker-url: ${{ inputs.broker_url }}
+          project-token-broker-audience: ${{ inputs.broker_audience }}
+          config-path: ${{ inputs.config_path }}
+          issue-number: ${{ inputs.issue_number }}
+          execution-mode: bootstrap
+
+  sync-github-app-user:
+    if: ${{ always() && (inputs.authentication == 'github-app-user' || inputs.authentication == 'broker-user') && needs.validate.result == 'success' && (needs.bootstrap-github-app-user.result == 'success' || needs.bootstrap-github-app-user.result == 'cancelled') }}
+    needs:
+      - validate
+      - bootstrap-github-app-user
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -143,7 +222,7 @@ jobs:
           path: .appfactory
           persist-credentials: false
 
-      - name: Synchronize GitHub Project
+      - name: Synchronize GitHub Project item
         uses: ./.appfactory
         with:
           project-authentication: github-app-user
@@ -151,3 +230,4 @@ jobs:
           project-token-broker-audience: ${{ inputs.broker_audience }}
           config-path: ${{ inputs.config_path }}
           issue-number: ${{ inputs.issue_number }}
+          execution-mode: sync
