@@ -17,13 +17,36 @@ test('reusable Project workflow keeps token and broker providers explicit', () =
   assert.match(reusable, /^  sync-github-app-user:/m);
 });
 
-test('OIDC permission is isolated to the brokered Project job', () => {
-  const tokenJob = reusable.match(/^  sync-token:[\s\S]*?(?=^  sync-github-app-user:)/m)?.[0] ?? '';
-  const brokerJob = reusable.match(/^  sync-github-app-user:[\s\S]*$/m)?.[0] ?? '';
-  assert.doesNotMatch(tokenJob, /id-token: write/);
-  assert.match(brokerJob, /id-token: write/);
-  assert.match(brokerJob, /project-authentication: github-app-user/);
-  assert.doesNotMatch(brokerJob, /project_token|PROJECT_TOKEN/);
+function workflowJob(name) {
+  const marker = `  ${name}:\n`;
+  const start = reusable.indexOf(marker);
+  if (start < 0) return '';
+
+  const tail = reusable.slice(start + marker.length);
+  const nextJobOffset = tail.search(/^  [a-z0-9-]+:\n/m);
+  return nextJobOffset < 0
+    ? reusable.slice(start)
+    : reusable.slice(start, start + marker.length + nextJobOffset);
+}
+
+test('OIDC permission is isolated to brokered Project bootstrap and sync jobs', () => {
+  const tokenBootstrap = workflowJob('bootstrap-token');
+  const tokenSync = workflowJob('sync-token');
+  const brokerBootstrap = workflowJob('bootstrap-github-app-user');
+  const brokerSync = workflowJob('sync-github-app-user');
+
+  for (const tokenJob of [tokenBootstrap, tokenSync]) {
+    assert.ok(tokenJob);
+    assert.doesNotMatch(tokenJob, /id-token: write/);
+    assert.match(tokenJob, /project-authentication: token/);
+  }
+
+  for (const brokerJob of [brokerBootstrap, brokerSync]) {
+    assert.ok(brokerJob);
+    assert.match(brokerJob, /id-token: write/);
+    assert.match(brokerJob, /project-authentication: github-app-user/);
+    assert.doesNotMatch(brokerJob, /project_token|PROJECT_TOKEN/);
+  }
 });
 
 test('default consumer example is zero-PAT and uses the production broker contract', () => {

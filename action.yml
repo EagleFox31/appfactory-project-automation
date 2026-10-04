@@ -43,6 +43,11 @@ inputs:
     required: false
     default: .github/project-config.json
 
+  execution-mode:
+    description: Execution phase. Use auto for backward-compatible single-pass behavior, bootstrap for serialized Project/schema reconciliation, or sync for item-only synchronization after bootstrap.
+    required: false
+    default: auto
+
   issue-number:
     description: Optional issue number for workflow_dispatch resync. Leave empty to run Project bootstrap when enabled. Accepts 15, #15, or issue_number = 15.
     required: false

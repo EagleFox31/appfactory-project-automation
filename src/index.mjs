@@ -29,6 +29,7 @@ const governanceAdministrationVerified =
   readActionInput('governance-administration-verified').trim().toLowerCase() === 'true';
 const governanceMode = normalizeGovernanceMode(readActionInput('governance-mode'));
 const configPath = path.resolve(readActionInput('config-path') || '.github/project-config.json');
+const executionMode = readActionInput('execution-mode') || 'auto';
 const manualIssueNumber = parseIssueNumber(readActionInput('issue-number') || process.env.MANUAL_ISSUE_NUMBER);
 const repositoryFullName = process.env.GITHUB_REPOSITORY;
 const rawEventName = process.env.GITHUB_EVENT_NAME;
@@ -37,6 +38,9 @@ const eventPath = process.env.GITHUB_EVENT_PATH;
 
 if (!repositoryFullName) throw new Error('GITHUB_REPOSITORY is not available.');
 if (!fs.existsSync(configPath)) throw new Error(`Project config not found: ${configPath}`);
+if (governanceMode === 'off' && !['auto', 'bootstrap', 'sync'].includes(executionMode)) {
+  throw new Error(`Invalid execution-mode "${executionMode}". Expected auto, bootstrap, or sync.`);
+}
 
 const token = governanceMode === 'off'
   ? await resolveProjectToken({
@@ -183,28 +187,57 @@ async function createProject(owner, repository) {
   return fetchProject(created.id);
 }
 
-async function resolveProject() {
-  const context = await loadProjectContext();
-  const projects = context.owner.projectsV2?.nodes ?? [];
-  const existing = projects.find((candidate) => candidate.title === config.project.title);
+async function resolveProject({ allowCreate = true, waitForExisting = false } = {}) {
+  const attempts = waitForExisting ? 20 : 1;
+  let lastContext;
 
-  if (existing) {
-    console.log(`Resolved ${context.owner.__typename} Project #${existing.number}: ${existing.title}`);
-    return { project: existing, created: false, ...context };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const context = await loadProjectContext();
+    lastContext = context;
+    const projects = context.owner.projectsV2?.nodes ?? [];
+    const matches = projects
+      .filter((candidate) => candidate.title === config.project.title)
+      .sort((left, right) => left.number - right.number);
+    const existing = matches[0];
+
+    if (existing) {
+      if (matches.length > 1) {
+        console.warn(
+          `Resolved ${matches.length} Projects named "${config.project.title}". ` +
+          `Using canonical lowest-number Project #${existing.number}; clean up older duplicate bootstrap artifacts.`
+        );
+      }
+      console.log(`Resolved ${context.owner.__typename} Project #${existing.number}: ${existing.title}`);
+      return { project: existing, created: false, ...context };
+    }
+
+    if (allowCreate) break;
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  const projects = lastContext?.owner?.projectsV2?.nodes ?? [];
+  if (!allowCreate) {
+    const visible = projects.map((candidate) => candidate.title).join(', ') || '(none visible)';
+    throw new Error(
+      `Project "${config.project.title}" did not become available after the serialized bootstrap phase. ` +
+      `Visible projects: ${visible}`
+    );
   }
 
   if (!isBootstrapEnabled(config)) {
     const visible = projects.map((candidate) => candidate.title).join(', ') || '(none visible)';
     throw new Error(
       `Project "${config.project.title}" was not found for ${config.project.owner} ` +
-      `(${context.owner.__typename}). Visible projects: ${visible}`
+      `(${lastContext.owner.__typename}). Visible projects: ${visible}`
     );
   }
 
   return {
-    project: await createProject(context.owner, context.repository),
+    project: await createProject(lastContext.owner, lastContext.repository),
     created: true,
-    ...context
+    ...lastContext
   };
 }
 
@@ -464,21 +497,6 @@ async function ensureProjectItem(projectId, contentId, itemMap = null) {
 async function setSingleSelect(project, itemId, configuredFieldName, optionName) {
   if (!configuredFieldName || !optionName) return;
 
-  const field = findSingleSelectField(project, configuredFieldName);
-  if (!field) {
-    console.warn(`Skipping missing/non-single-select Project field: ${configuredFieldName}`);
-    return;
-  }
-
-  const option = field.options.find((candidate) => normalize(candidate.name) === normalize(optionName));
-  if (!option) {
-    console.warn(
-      `Skipping ${configuredFieldName}="${optionName}" because that option does not exist. ` +
-      `Available: ${field.options.map((candidate) => candidate.name).join(', ')}`
-    );
-    return;
-  }
-
   const mutation = `
     mutation SetProjectField($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
       updateProjectV2ItemFieldValue(
@@ -492,13 +510,64 @@ async function setSingleSelect(project, itemId, configuredFieldName, optionName)
     }
   `;
 
-  await graphql(mutation, {
-    projectId: project.id,
-    itemId,
-    fieldId: field.id,
-    optionId: option.id
-  });
-  console.log(`Set ${configuredFieldName} → ${option.name}`);
+  const resolveFieldOption = (snapshot) => {
+    const field = findSingleSelectField(snapshot, configuredFieldName);
+    if (!field) {
+      console.warn(`Skipping missing/non-single-select Project field: ${configuredFieldName}`);
+      return null;
+    }
+
+    const option = field.options.find(
+      (candidate) => normalize(candidate.name) === normalize(optionName)
+    );
+    if (!option) {
+      console.warn(
+        `Skipping ${configuredFieldName}="${optionName}" because that option does not exist. ` +
+        `Available: ${field.options.map((candidate) => candidate.name).join(', ')}`
+      );
+      return null;
+    }
+    return { field, option };
+  };
+
+  let resolved = resolveFieldOption(project);
+  if (!resolved) return;
+
+  const writeValue = async ({ field, option }) => {
+    await graphql(mutation, {
+      projectId: project.id,
+      itemId,
+      fieldId: field.id,
+      optionId: option.id
+    });
+  };
+
+  try {
+    await writeValue(resolved);
+  } catch (error) {
+    if (!/single select option id does not belong to the field/i.test(String(error?.message ?? error))) {
+      throw error;
+    }
+
+    console.warn(
+      `Detected stale Project option id for ${configuredFieldName}; refreshing Project schema and retrying once.`
+    );
+    const refreshed = await fetchProject(project.id);
+    project.fields = refreshed.fields;
+    project.views = refreshed.views;
+    project.repositories = refreshed.repositories;
+
+    resolved = resolveFieldOption(project);
+    if (!resolved) {
+      throw new Error(
+        `Project schema changed while synchronizing ${configuredFieldName}="${optionName}". ` +
+        'The serialized bootstrap phase must reconcile the option before item synchronization.'
+      );
+    }
+    await writeValue(resolved);
+  }
+
+  console.log(`Set ${configuredFieldName} -> ${resolved.option.name}`);
 }
 
 async function applyIssueFields(project, issue, itemId, status) {
@@ -600,29 +669,71 @@ async function bootstrapProject(project, repository, { freshProject = false } = 
 
   await ensureRepositoryLinked(project, repository);
   await ensureProjectSchema(project, issues, { freshProject });
-  await ensureBoardView(project);
+
+  // Treat the board as the final bootstrap marker: if a run fails before the
+  // backlog import completes, the next serialized bootstrap still sees the
+  // Project as incomplete and safely retries the idempotent import.
   if (shouldImport) await importOpenIssues(project, issues);
+  await ensureBoardView(project);
 
   console.log(`AppFactory bootstrap complete for Project #${project.number}: ${project.title}`);
   return project;
 }
 
-async function handleIssueEvent(project) {
+function projectBootstrapComplete(project, repository) {
+  if (config.project.linkRepository !== false) {
+    const linked = project.repositories?.nodes?.some((candidate) => candidate.id === repository.id);
+    if (!linked) return false;
+  }
+
+  const definitions = bootstrapFieldDefinitions(config, []);
+  for (const definition of definitions) {
+    if (!findSingleSelectField(project, definition.name)) return false;
+  }
+
+  if (config.project.createBoardView !== false) {
+    const boardName = config.bootstrap?.boardViewName || 'AppFactory Board';
+    const hasBoard = project.views?.nodes?.some(
+      (view) => normalize(view.name) === normalize(boardName)
+    );
+    if (!hasBoard) return false;
+  }
+
+  return true;
+}
+
+async function schemaIssuesForCurrentEvent() {
+  if (eventName === 'issues') {
+    return event.issue ? [event.issue] : [];
+  }
+
+  if (eventName === 'workflow_dispatch' && manualIssueNumber) {
+    return [await loadIssue(manualIssueNumber)];
+  }
+
+  if (eventName === 'pull_request' && event.pull_request?.node_id) {
+    return closingIssuesForPullRequest(event.pull_request.node_id);
+  }
+
+  return [];
+}
+
+async function handleIssueEvent(project, { reconcileSchema = true } = {}) {
   const issue = event.issue;
   if (!issue?.node_id) throw new Error('Issue event does not contain issue.node_id.');
 
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
   const { itemId } = await ensureProjectItem(project.id, issue.node_id);
   const status = issueStatusForAction(event.action, config.statusTransitions);
   await applyIssueFields(project, issue, itemId, status);
   console.log(`Synced Issue #${issue.number}: ${issue.title}`);
 }
 
-async function handleManualIssue(project) {
+async function handleManualIssue(project, { reconcileSchema = true } = {}) {
   if (!manualIssueNumber) throw new Error('Manual execution requires a positive issue-number input.');
 
   const issue = await loadIssue(manualIssueNumber);
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, [issue]);
   const { itemId } = await ensureProjectItem(project.id, issue.id);
   const status = issue.state === 'CLOSED'
     ? config.statusTransitions.issueClosed
@@ -632,7 +743,7 @@ async function handleManualIssue(project) {
   console.log(`Manually synced Issue #${issue.number}: ${issue.title}`);
 }
 
-async function handlePullRequestEvent(project) {
+async function handlePullRequestEvent(project, { reconcileSchema = true } = {}) {
   const pullRequest = event.pull_request;
   if (!pullRequest?.node_id) throw new Error('Pull request event does not contain pull_request.node_id.');
 
@@ -642,7 +753,7 @@ async function handlePullRequestEvent(project) {
     return;
   }
 
-  if (isBootstrapEnabled(config)) await ensureProjectSchema(project, issues);
+  if (reconcileSchema && isBootstrapEnabled(config)) await ensureProjectSchema(project, issues);
   const targetStatus = pullRequestTargetStatus(
     { action: event.action, merged: pullRequest.merged, draft: pullRequest.draft },
     config.statusTransitions
@@ -656,11 +767,68 @@ async function handlePullRequestEvent(project) {
   for (const issue of issues) {
     const { itemId } = await ensureProjectItem(project.id, issue.id);
     await applyIssueFields(project, issue, itemId, targetStatus);
-    console.log(`PR lifecycle moved Issue #${issue.number} → ${targetStatus}`);
+    console.log(`PR lifecycle moved Issue #${issue.number} -> ${targetStatus}`);
+  }
+}
+
+async function runProjectBootstrapPhase() {
+  const resolution = await resolveProject({ allowCreate: true });
+  const project = resolution.project;
+  const manualFullBootstrap = eventName === 'workflow_dispatch' && !manualIssueNumber;
+  const requiresFullBootstrap =
+    resolution.created || manualFullBootstrap || !projectBootstrapComplete(project, resolution.repository);
+
+  if (requiresFullBootstrap) {
+    await bootstrapProject(project, resolution.repository, { freshProject: resolution.created });
+    return;
+  }
+
+  // The reusable workflow serializes this phase across all Issue/PR runs.
+  // Only this phase is allowed to mutate schema, preventing lost option
+  // updates while preserving item-scoped concurrency for normal sync work.
+  const issues = await schemaIssuesForCurrentEvent();
+  await ensureRepositoryLinked(project, resolution.repository);
+  await ensureProjectSchema(project, issues, { freshProject: false });
+  await ensureBoardView(project);
+  console.log(`Serialized bootstrap reconciliation complete for Project #${project.number}: ${project.title}`);
+}
+
+async function runProjectSyncPhase() {
+  const resolution = await resolveProject({
+    allowCreate: false,
+    waitForExisting: isBootstrapEnabled(config)
+  });
+  const project = await fetchProject(resolution.project.id);
+
+  if (eventName === 'workflow_dispatch') {
+    if (manualIssueNumber) {
+      await handleManualIssue(project, { reconcileSchema: false });
+    } else if (isBootstrapEnabled(config)) {
+      console.log('Bootstrap-only workflow_dispatch already reconciled the Project; no item sync required.');
+    } else {
+      throw new Error('Manual execution requires issue-number unless project.bootstrap is enabled.');
+    }
+  } else if (eventName === 'issues') {
+    await handleIssueEvent(project, { reconcileSchema: false });
+  } else if (eventName === 'pull_request') {
+    await handlePullRequestEvent(project, { reconcileSchema: false });
+  } else {
+    console.log(`Unsupported event ${rawEventName}; nothing to do.`);
   }
 }
 
 async function runProjectAutomation() {
+  if (executionMode === 'bootstrap') {
+    await runProjectBootstrapPhase();
+    return;
+  }
+  if (executionMode === 'sync') {
+    await runProjectSyncPhase();
+    return;
+  }
+
+  // Backward-compatible single-pass behavior for consumers that invoke the
+  // Action directly instead of the reusable two-phase workflow.
   const resolution = await resolveProject();
   let project = resolution.project;
   let bootstrapAlreadyRan = false;

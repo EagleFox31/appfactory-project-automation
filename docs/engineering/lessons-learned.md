@@ -377,3 +377,39 @@ When one system owns runtime configuration and another system can redeploy the w
 
 RAIDER durability reviews must identify the authoritative writer for each mutable runtime surface, enumerate downstream operations that can overwrite it, and require post-operation reconciliation before readiness. Detection-only gates are insufficient when the automation already owns enough authority to repair the drift.
 
+
+
+### LESSON-2026-011 — Item idempotence does not serialize shared bootstrap state
+
+- **Date:** 2026-10-04
+- **Category:** concurrency-architecture
+- **Status:** prevention-added
+- **Related:** issue #68
+
+**Context**
+
+A new consumer enabled Project bootstrap and opened 18 Issues in a short burst. Each Issue correctly had its own workflow concurrency lane, but every run still shared one mutable GitHub Project creation and schema surface.
+
+**Failure / near miss**
+
+Concurrent first-run workers observed that the configured Project did not exist, created competing Projects with the same title, and then hydrated fields/options against different snapshots. The burst produced duplicate Projects plus stale single-select option IDs.
+
+**Root cause**
+
+The previous fix protected durability of independent Issue events but treated Project creation, schema mutation and item synchronization as one concurrency domain. Item-scoped idempotence cannot make a shared bootstrap mutation atomic.
+
+**Resolution**
+
+Project Automation now uses two execution phases. A repository-scoped bootstrap phase serializes Project creation and schema reconciliation; item synchronization remains Issue/PR-scoped. Sync workers never create Projects, re-resolve the canonical Project after bootstrap, and refresh once when GitHub reports a stale option ID. The idempotent backlog import runs before the board marker so an interrupted bootstrap is retried rather than mistaken for a completed one.
+
+**Prevention**
+
+Contract tests model a 12-Issue burst and require one shared bootstrap lane alongside 12 independent item lanes. Tests also require the bootstrap-before-sync split, import-before-marker ordering, no Project creation from sync mode and stale-option refresh behavior.
+
+**Generalized lesson**
+
+Concurrency boundaries must follow the scope of the state being mutated. Idempotent item handlers do not protect repository- or project-scoped resources from first-run races.
+
+**Derived principle / standard change**
+
+RAIDER concurrency reviews must inventory each mutable resource, assign a serialization scope matching that resource, and prove that scheduler queue semantics cannot silently drop independent work while protecting shared critical sections.
