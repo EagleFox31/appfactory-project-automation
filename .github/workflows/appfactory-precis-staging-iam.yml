@@ -67,7 +67,6 @@ jobs:
           node-version: '24'
       - name: Bind to exact reviewed Précis staging template
         shell: bash
-        env:
         run: |
           set -euo pipefail
           [[ "$(git -C .precis rev-parse HEAD)" == "$PRECIS_REVIEWED_SHA" ]] || exit 1
