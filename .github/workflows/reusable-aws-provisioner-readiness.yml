@@ -1,0 +1,118 @@
+name: Reusable AWS staging delegated provisioner audit (read-only)
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        type: string
+        required: true
+      expected_account:
+        type: string
+        required: true
+      target_repository:
+        type: string
+        required: true
+      runner_role_arn:
+        type: string
+        required: true
+      service_role_arn:
+        type: string
+        required: true
+      target_role_arn:
+        type: string
+        required: true
+      target_stack_arn:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  assess-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require protected manual main-branch entrypoint
+        shell: bash
+        env:
+          PINNED_REF: ${{ inputs.appfactory_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
+          [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          [[ "$PINNED_REF" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Assume ONLY the designated staging onboarding runner via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.runner_role_arn }}
+          aws-region: eu-west-3
+          role-session-name: appfactory-staging-capability-audit
+          role-duration-seconds: 900
+      - name: Read identity, roles and simulated policies (no AWS mutations)
+        shell: bash
+        env:
+          RUNNER_ROLE_ARN: ${{ inputs.runner_role_arn }}
+          CFN_SERVICE_ROLE_ARN: ${{ inputs.service_role_arn }}
+          TARGET_ROLE_ARN: ${{ inputs.target_role_arn }}
+          TARGET_STACK_ARN: ${{ inputs.target_stack_arn }}
+          EXPECTED_AWS_ACCOUNT: ${{ inputs.expected_account }}
+        run: |
+          set -euo pipefail
+          umask 077
+          actual="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$actual" == "$EXPECTED_AWS_ACCOUNT" ]] || {
+            echo "::error::Wrong AWS account"
+            exit 1
+          }
+          [[ "$RUNNER_ROLE_ARN" == arn:aws:iam::"$EXPECTED_AWS_ACCOUNT":role/* ]] || exit 1
+          [[ "$CFN_SERVICE_ROLE_ARN" == arn:aws:iam::"$EXPECTED_AWS_ACCOUNT":role/* ]] || exit 1
+          [[ "$TARGET_ROLE_ARN" == arn:aws:iam::"$EXPECTED_AWS_ACCOUNT":role/* ]] || exit 1
+          [[ "$TARGET_STACK_ARN" == arn:aws:cloudformation:eu-west-3:"$EXPECTED_AWS_ACCOUNT":stack/* ]] || exit 1
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/aws-onboarding-identity.json"
+          aws iam get-role --role-name "${RUNNER_ROLE_ARN##*/}" --output json > "$RUNNER_TEMP/aws-onboarding-runner-role.json"
+          aws iam get-role --role-name "${CFN_SERVICE_ROLE_ARN##*/}" --output json > "$RUNNER_TEMP/aws-onboarding-service-role.json"
+          aws iam simulate-principal-policy \
+            --policy-source-arn "$RUNNER_ROLE_ARN" \
+            --action-names cloudformation:CreateChangeSet cloudformation:DescribeChangeSet cloudformation:ExecuteChangeSet cloudformation:DeleteChangeSet cloudformation:DescribeStacks \
+            --resource-arns "$TARGET_STACK_ARN" --output json > "$RUNNER_TEMP/aws-onboarding-cloudformation-simulation.json"
+          aws iam simulate-principal-policy \
+            --policy-source-arn "$RUNNER_ROLE_ARN" \
+            --action-names iam:PassRole --resource-arns "$CFN_SERVICE_ROLE_ARN" \
+            --context-entries ContextKeyName=iam:PassedToService,ContextKeyValues=cloudformation.amazonaws.com,ContextKeyType=string \
+            --output json > "$RUNNER_TEMP/aws-onboarding-passrole-simulation.json"
+          aws iam simulate-principal-policy \
+            --policy-source-arn "$CFN_SERVICE_ROLE_ARN" \
+            --action-names iam:CreateRole iam:PutRolePolicy iam:GetRole \
+            --resource-arns "$TARGET_ROLE_ARN" --output json > "$RUNNER_TEMP/aws-onboarding-tenant-iam-simulation.json"
+      - name: Validate provenance-independent IAM readiness evidence
+        env:
+          EXPECTED_AWS_ACCOUNT: ${{ inputs.expected_account }}
+          TARGET_REPOSITORY: ${{ inputs.target_repository }}
+          RUNNER_ROLE_ARN: ${{ inputs.runner_role_arn }}
+          CFN_SERVICE_ROLE_ARN: ${{ inputs.service_role_arn }}
+          TARGET_ROLE_ARN: ${{ inputs.target_role_arn }}
+          TARGET_STACK_ARN: ${{ inputs.target_stack_arn }}
+        run: node .appfactory/scripts/deployment/verify-aws-provisioner-readiness.mjs
+      - name: Purge temporary AWS inspection evidence
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP"/aws-onboarding-*.json
+
+# No CloudFormation mutation, no EC2, no SSM command, no changes to IAM.
+# Existing dedicated staging runner must be bootstrapped and constrained first.
+# A success is advisory and DOES NOT trigger provisioning.
