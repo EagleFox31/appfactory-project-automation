@@ -106,6 +106,15 @@ jobs:
           APPFACTORY_CI_WORKFLOW: ${{ inputs.ci_workflow }}
           APPFACTORY_PUBLISH_WORKFLOW: ${{ inputs.publish_workflow }}
         run: node .appfactory/scripts/deployment/verify-release-provenance.mjs
+      - name: Enforce staging-only SHA-bound approval before requesting AWS credentials
+        env:
+          APPFACTORY_PROVENANCE_VERIFIED: ${{ steps.verified.outputs.verified }}
+          APPFACTORY_EXECUTE: ${{ inputs.execute }}
+          APPFACTORY_APPROVAL: ${{ inputs.confirmation }}
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+        run: node .appfactory/scripts/deployment/check-staging-consent.mjs
       - name: Validate explicit SSM target before AWS authentication
         id: target
         env:
@@ -119,7 +128,7 @@ jobs:
           role-to-assume: ${{ steps.target.outputs.role_arn }}
           aws-region: ${{ steps.target.outputs.region }}
           role-session-name: appfactory-ssm-rollout
-          role-duration-seconds: 1800
+          role-duration-seconds: 3600
       - name: Inspect the real EC2 and SSM target immediately before rollout
         env:
           TARGET_ID: ${{ steps.target.outputs.instance_id }}
