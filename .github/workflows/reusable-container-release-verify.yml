@@ -1,0 +1,90 @@
+name: Reusable release image provenance check (read-only)
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        type: string
+        required: false
+        default: .github/appfactory-deploy.json
+      appfactory_ref:
+        description: Reviewed immutable AppFactory code SHA
+        type: string
+        required: true
+      source_sha:
+        description: Exact source commit required by the release manifest
+        type: string
+        required: true
+      environment:
+        description: Environment required by the release manifest
+        type: string
+        required: true
+      build_run_id:
+        description: Existing successful GHCR publisher GitHub Actions run ID
+        type: string
+        required: true
+      ci_workflow:
+        description: Trusted CI workflow path, e.g. .github/workflows/ci.yml
+        type: string
+        required: true
+      publish_workflow:
+        description: Trusted release publisher workflow path
+        type: string
+        required: true
+    outputs:
+      verified:
+        value: ${{ jobs.verify.outputs.verified }}
+      source_sha:
+        value: ${{ jobs.verify.outputs.source_sha }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      verified: ${{ steps.verify.outputs.verified }}
+      source_sha: ${{ steps.verify.outputs.source_sha }}
+    steps:
+      - name: Checkout exact consumer commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout reviewed AppFactory verifier
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Download manifest from specified authenticated GitHub Actions run
+        uses: actions/download-artifact@v4
+        with:
+          name: appfactory-release-manifest
+          path: .
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+      - name: Verify checksum, build run, CI run, repository, image set and digest identity
+        id: verify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+          APPFACTORY_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          APPFACTORY_CI_WORKFLOW: ${{ inputs.ci_workflow }}
+          APPFACTORY_PUBLISH_WORKFLOW: ${{ inputs.publish_workflow }}
+        run: node .appfactory/scripts/deployment/verify-release-provenance.mjs
+
+# No AWS credentials, SSM SendCommand, GHCR write, Docker run or infrastructure operations.
