@@ -8,6 +8,12 @@ if [[ "${1:-}" != "" && "${1:-}" != "--apply" ]] || [[ "$#" -gt 1 ]]; then
   echo "Usage: bash scripts/deployment/bootstrap-aws-free-plan-reader.sh [--apply]" >&2
   exit 2
 fi
+# Deprecated: centrally managed staging bootstrap now enforces permissions boundaries.
+# Explicitly block the legacy --apply path so it cannot create an unbounded role.
+if [[ "${1:-}" == "--apply" ]]; then
+  echo "REFUSED: legacy bootstrap --apply is disabled. Use central CloudFormation onboarding described in docs/aws-central-staging-iam-bootstrap.md" >&2
+  exit 1
+fi
 for command in aws grep; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 2; }; done
 
 # Pilot configuration is explicit and fixed; later projects must be onboarded
@@ -44,30 +50,6 @@ echo "Verified existing GitHub OIDC provider audience: sts.amazonaws.com"
 echo "Requested stack: $stack_name; IAM role: $project-$environment-free-plan-read"
 echo "Permitted AWS action for the created role: freetier:GetAccountPlanState only"
 if [[ "${1:-}" != "--apply" ]]; then
-  echo "DRY RUN ONLY: no changes have been made. Review the template and rerun with --apply."
+  echo "DRY RUN ONLY: no changes have been made. The legacy --apply path is disabled."
   exit 0
 fi
-# Deliberately requires an operator to opt in. No GitHub workflow invokes this.
-aws cloudformation deploy \
-  --region "$region" \
-  --stack-name "$stack_name" \
-  --template-file "$template" \
-  --no-fail-on-empty-changeset \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides \
-    ProjectId="$project" \
-    Environment="$environment" \
-    GitHubOwner="$github_owner" \
-    GitHubOwnerId="$github_owner_id" \
-    GitHubRepository="$github_repository" \
-    GitHubRepositoryId="$github_repository_id"
-
-arn="$(aws cloudformation describe-stacks --region "$region" --stack-name "$stack_name" \
-  --query "Stacks[0].Outputs[?OutputKey=='ReadOnlyRoleArn'].OutputValue | [0]" --output text)"
-expected_role="arn:aws:iam::${expected_account}:role/${project}-${environment}-free-plan-read"
-if [[ "$arn" != "$expected_role" ]]; then
-  echo "REFUSED: unexpected deployed role ARN" >&2
-  exit 1
-fi
-echo "Read-only role ready: $arn"
-echo "Next: manually dispatch Précis AWS staging credit eligibility workflow on GitHub main."

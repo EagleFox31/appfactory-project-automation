@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  One-time AppFactory platform trust for tightly scoped IAM-only Précis staging onboarding.
+  No EC2, network, storage, SSM command or production resource.
+Resources:
+  StagingReaderBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: appfactory-staging-free-plan-boundary
+      Description: Maximum permissions permitted to Précis staging credit reader
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: freetier:GetAccountPlanState
+            Resource: '*'
+
+  StagingIamCloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: appfactory-staging-iam-cfn-execution
+      Description: Can create or manage only Précis staging bounded reader IAM role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: precis-staging-iam-limited
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CreateOnlyBoundedTaggedReader
+                Effect: Allow
+                Action: iam:CreateRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/precis-translation-staging-free-plan-read'
+                Condition:
+                  ArnEquals:
+                    'iam:PermissionsBoundary': !Ref StagingReaderBoundary
+                  StringEquals:
+                    'aws:RequestTag/AppFactoryProject': precis-translation
+                    'aws:RequestTag/AppFactoryEnvironment': staging
+              - Sid: ManageOnlyExactReaderRole
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:DeleteRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/precis-translation-staging-free-plan-read'
+
+  AppFactoryStagingIamDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: appfactory-staging-iam-deployer
+      Description: GitHub OIDC role limited to reviewed Précis staging IAM stack
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': 'repo:EagleFox31@86088743/appfactory-project-automation@1355997933:environment:staging'
+      Policies:
+        - PolicyName: precis-only-cloudformation-stack
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ExactStackAndChangeSets
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStackResources
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:eu-west-3:${AWS::AccountId}:stack/precis-staging-iam-readonly/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:eu-west-3:${AWS::AccountId}:changeSet/appfactory-precis-staging-*/*'
+              - Sid: ValidateTemplates
+                Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: '*'
+              - Sid: ReadCurrentFreePlanCredits
+                Effect: Allow
+                Action: freetier:GetAccountPlanState
+                Resource: '*'
+              - Sid: DelegateOnlyToIsolatedCloudFormationRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt StagingIamCloudFormationRole.Arn
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': cloudformation.amazonaws.com
+Outputs:
+  DeployerRoleArn:
+    Description: Non-secret GitHub OIDC role for reviewed IAM-only staging onboarding
+    Value: !GetAtt AppFactoryStagingIamDeployerRole.Arn
+  CloudFormationExecutionRoleArn:
+    Description: Service role can manage only a bounded Précis reader IAM role
+    Value: !GetAtt StagingIamCloudFormationRole.Arn
+  StagingReaderBoundaryArn:
+    Description: Strict Free Tier reader permissions boundary
+    Value: !Ref StagingReaderBoundary
