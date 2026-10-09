@@ -50,7 +50,7 @@ test('unsafe and incomplete consumer configs are rejected',()=>{
     f=>f.input.images[1].name='api',
     f=>f.input.images[0].name='api;echo hacked',
     f=>f.input.images=Array.from({length:7},(_,i)=>({name:'api-'+i,dockerfile:'backend/Dockerfile',context:'.'})),
-    f=>symlinkSync('/etc',join(f.root,'external')) && (f.input.images[0].context='external')
+    f=>{symlinkSync('/etc',join(f.root,'external')); f.input.images[0].context='external';}
   ];
   for(const mutate of changes){const f=fixture();try{mutate(f);assert.throws(()=>validate(f));}finally{f.done();}}
 });
