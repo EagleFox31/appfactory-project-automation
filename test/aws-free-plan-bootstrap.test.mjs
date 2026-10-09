@@ -51,19 +51,18 @@ test('dry-run verifies AWS identity/provider but never deploys',()=>{
   assert.match(r.commands,/iam get-open-id-connect-provider/);
   assert.doesNotMatch(r.commands,/cloudformation deploy/);
 });
-test('one-time apply changes IAM only after explicit confirmation',()=>{
+test('legacy --apply is blocked before any AWS operation',()=>{
   const r=invoke(['--apply']);
-  assert.equal(r.status,0,r.stderr);
-  assert.match(r.commands,/cloudformation deploy/);
-  assert.match(r.commands,/precis-staging-iam-readonly/);
-  assert.match(r.stdout,/Read-only role ready/);
+  assert.notEqual(r.status,0);
+  assert.match(r.stderr,/legacy bootstrap --apply is disabled/);
+  assert.equal(r.commands,'');
 });
 test('wrong AWS account and missing audience fail before deploy',()=>{
   for(const extra of [
     {APPFACTORY_TEST_ACCOUNT:'111111111111'},
     {APPFACTORY_TEST_AUDIENCE:'False'}
   ]) {
-    const r=invoke(['--apply'],extra);
+    const r=invoke([],extra);
     assert.notEqual(r.status,0);
     assert.doesNotMatch(r.commands,/cloudformation deploy/);
   }
