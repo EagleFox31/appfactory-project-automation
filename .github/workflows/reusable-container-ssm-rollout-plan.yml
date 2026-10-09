@@ -1,0 +1,141 @@
+name: Reusable verified SSM rollout payload (no execution)
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        type: string
+        required: false
+        default: .github/appfactory-deploy.json
+      appfactory_ref:
+        description: Reviewed immutable AppFactory source SHA
+        type: string
+        required: true
+      source_sha:
+        description: Exact consumer source SHA for verified release
+        type: string
+        required: true
+      environment:
+        description: Protected environment matching the consumer configuration
+        type: string
+        required: true
+      build_run_id:
+        description: Existing successful GHCR image publisher run
+        type: string
+        required: true
+      ci_workflow:
+        description: Trusted CI workflow path
+        type: string
+        required: true
+      publish_workflow:
+        description: Trusted release publisher workflow path
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      role_arn: ${{ steps.target.outputs.role_arn }}
+      region: ${{ steps.target.outputs.region }}
+      instance_id: ${{ steps.target.outputs.instance_id }}
+      environment: ${{ steps.target.outputs.environment }}
+      source_sha: ${{ steps.target.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Reject unsafe tenant/environment without cloud identity
+        id: target
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+        run: node .appfactory/scripts/deployment/prepare-ssm-preflight.mjs
+
+  verify-and-inspect:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ needs.validate.outputs.environment }}
+    concurrency:
+      group: appfactory-ssm-payload-${{ github.repository }}-${{ needs.validate.outputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Download digest manifest from exact authenticated publisher run
+        uses: actions/download-artifact@v4
+        with:
+          name: appfactory-release-manifest
+          path: .
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+      - name: Assume dedicated read-only tenant role via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.validate.outputs.role_arn }}
+          aws-region: ${{ needs.validate.outputs.region }}
+          role-session-name: appfactory-ssm-payload
+          role-duration-seconds: 900
+      - name: Read STS, EC2 and SSM identities; no mutations
+        env:
+          TARGET_ID: ${{ needs.validate.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/aws-sts.json"
+          aws ec2 describe-instances --instance-ids "$TARGET_ID" --output json > "$RUNNER_TEMP/aws-ec2.json"
+          aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$TARGET_ID" \
+            --output json > "$RUNNER_TEMP/aws-ssm.json"
+      - name: Verify published image digests, CI history and target binding
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+          APPFACTORY_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          APPFACTORY_CI_WORKFLOW: ${{ inputs.ci_workflow }}
+          APPFACTORY_PUBLISH_WORKFLOW: ${{ inputs.publish_workflow }}
+        run: node .appfactory/scripts/deployment/assemble-ssm-host-payload.mjs
+      - name: Preserve verified, secret-free, unexecuted rollout payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: appfactory-verified-host-payload
+          path: appfactory-host-rollout-payload.json
+          if-no-files-found: error
+          retention-days: 14
+
+# Intentionally no SSM SendCommand, Docker deploy, GHCR write, EC2 provisioning or restart.
