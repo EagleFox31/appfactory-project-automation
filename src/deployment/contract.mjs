@@ -36,7 +36,7 @@ function platforms(value, field) {
   unique(value, field);
   return value;
 }
-function deployment(value, projectId, environment, images) {
+function deployment(value, projectId, environment, images, root) {
   object(value, 'deployment');
   onlyKeys(value, ['transport', 'region', 'roleArn', 'instanceId',
     'ssmParameterPrefix', 'healthPath', 'composeProject', 'serviceNames',
@@ -89,11 +89,11 @@ function deployment(value, projectId, environment, images) {
         value.runtimeEnvTarget.includes('//') ||
         value.runtimeEnvTarget.includes('/./')) fail(field, 'noncanonical');
     const filename = value.runtimeEnvTarget.split('/').at(-1);
-    if (!/^\\.env(?:\\.[a-zA-Z0-9_-]+)?$/.test(filename))
+    if (!/^\.env(?:\.[a-zA-Z0-9_-]+)?$/.test(filename))
       fail(field, 'must target a dedicated .env file');
   }
   if (value.predeployHook !== undefined) {
-    repoPath(value.predeployHook, process.cwd(), 'deployment.predeployHook');
+    repoPath(value.predeployHook, root, 'deployment.predeployHook');
   }
   return value;
 }
@@ -130,7 +130,7 @@ export function validateContainerConfig(raw, { repository, root = process.cwd() 
   unique(images.map(x => x.name), 'images');
   return { schemaVersion: 1, projectId, environment, releaseBranch, releaseMarker,
     composePath, platforms: defaults, images,
-    deployment: raw.deployment === undefined ? null : deployment(raw.deployment, projectId, environment, images) };
+    deployment: raw.deployment === undefined ? null : deployment(raw.deployment, projectId, environment, images, root) };
 }
 export function publishEligibility({ mode, eventName, event, repository, sha, config, markerChanged }) {
   if (mode !== 'plan' && mode !== 'publish') fail('mode', 'expected plan or publish');
