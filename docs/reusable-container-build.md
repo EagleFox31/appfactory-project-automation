@@ -71,6 +71,52 @@ The resulting JSON includes the consumer repository, project ID, environment, ex
 
 **Important:** A checksum guards artifact corruption, not signature authenticity. Future rollout must download the artifact using GitHub's authenticated API from a **verified successful build run** and recheck the run, CI provenance, SHA, repository, environment and digest set. Never accept a user-provided manifest path without verifying the run of origin. No automatic deployment is triggered.
 
+## Authenticated release provenance verification (no cloud access)
+
+The shared read-only workflow `.github/workflows/reusable-container-release-verify.yml` can independently validate an existing successful **publishing run** before any SSM rollout is considered.
+
+The caller must be launched manually (`workflow_dispatch`) from its protected release branch, passing the exact consumer source commit, target environment, publishing GitHub Actions run ID, and both trusted workflow paths. It downloads the `appfactory-release-manifest` artifact **using GitHub's authenticated API** from that run, checks its checksum and image digests, and queries GitHub REST for the publishing run **and** the referenced CI run.
+
+Verification fails unless:
+
+- CI was a successful `push` on the exact trusted branch, commit and repo, using the expected CI workflow file.
+- Publisher was a successful `workflow_run` for the exact same commit, branch and repo, using the expected release publisher workflow file.
+- Manifest claims the exact CI and publishing run IDs and its creation time falls inside the publisher run's time window.
+- Image names, SHA-256 digests, architectures, project ID and environment match the consumer configuration.
+- Artifact is not older than the 90-day retention horizon.
+
+The workflow uses `contents:read` and `actions:read`; it **does not** request AWS OIDC, modify GHCR packages, deploy containers or change infrastructure.
+
+An example manual caller, pinning **both** runtime references to the exact reviewed AppFactory commit:
+
+```yaml
+name: Verify release provenance
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-container-release-verify.yml@REVIEWED_APPFACTORY_SHA
+    with:
+      appfactory_ref: REVIEWED_APPFACTORY_SHA
+      environment: staging
+      source_sha: ${{ inputs.source_sha }}
+      build_run_id: ${{ inputs.build_run_id }}
+      ci_workflow: .github/workflows/ci.yml
+      publish_workflow: .github/workflows/container-publish.yml
+```
+
+**Limitations:** A GitHub run's successful status and checksum cannot by themselves attest what code executed in that run; protect your release branch and CI workflow from unreviewed changes, keep the reusable workflow pinned, and use GitHub Environment approvals for actual deployment. This validation is **not** a production deployment approval.
+
 ## Future work before live AWS/SSM
 
 Phase 2 requires an independently reviewed SSM adapter with per-app OIDC trust, remote instance identity verification, explicit manual production approval, no mutable `latest` tags, verified digest-based rollout, backups, health checks and recoverable rollback.
