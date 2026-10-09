@@ -44,6 +44,9 @@ test('workflow defaults to audit and requires explicit approval for write operat
   assert.match(workflow,/workflow_dispatch:/);
   assert.match(workflow,/type: boolean\s+default: false/);
   assert.match(workflow,/environment: staging/);
+  assert.match(workflow,/PRECIS_REVIEWED_SHA: efa3f3492abca331453d9f814cc3e6269fbf6d79/);
+  assert.match(workflow,/ref: \\$\\{\\{ env\\.PRECIS_REVIEWED_SHA \\}\\}/);
+  assert.doesNotMatch(workflow,/inputs\\.consumer_sha|^\\s+consumer_sha:/m);
   assert.match(workflow,/APPLY_PRECIS_STAGING_READER/);
   assert.match(workflow,/if: \$\{\{ inputs.apply \}\}/);
   assert.match(workflow,/if: \$\{\{ !inputs.apply \}\}/);
