@@ -8,13 +8,8 @@ on:
         type: string
         required: false
         default: .github/appfactory-deploy.json
-      mode:
-        description: plan is read-only; publish requires successful release-only CI
-        type: string
-        required: false
-        default: plan
       source_sha:
-        description: Exact 40-character consumer commit SHA
+        description: Exact SHA of successful trusted push-based CI
         type: string
         required: true
       appfactory_ref:
@@ -63,7 +58,7 @@ jobs:
         id: plan
         env:
           APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
-          APPFACTORY_DEPLOY_MODE: ${{ inputs.mode }}
+          APPFACTORY_DEPLOY_MODE: publish
           APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
         run: node .appfactory/scripts/deployment/plan.mjs
 
