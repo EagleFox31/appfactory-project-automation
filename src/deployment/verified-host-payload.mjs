@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateContainerConfig, validateSourceSha } from './contract.mjs';
 import { validateReleaseManifest } from './manifest.mjs';
@@ -57,8 +55,6 @@ export function assembleVerifiedHostPayload({
   const imageRefs=Object.fromEntries(checked.images.map(image=>[image.name,image.ref]));
   if (Object.values(deploy.imageServices).some(name=>!deploy.serviceNames.includes(name)))
     deny('unapproved Compose service');
-  const contents=readFileSync(resolve(root,config.composePath));
-  const digest='sha256:'+createHash('sha256').update(contents).digest('hex');
   return {
     schemaVersion:1,
     projectId:config.projectId,
