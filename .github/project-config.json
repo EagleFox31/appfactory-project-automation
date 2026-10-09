@@ -1,0 +1,21 @@
+{
+  "project": {
+    "owner": "EagleFox31",
+    "title": "AppFactory Project Automation",
+    "bootstrap": true,
+    "template": "appfactory-product",
+    "linkRepository": true,
+    "importOpenIssues": true,
+    "createBoardView": true
+  },
+  "bootstrap": {
+    "boardViewName": "AppFactory Board",
+    "phases": [
+      "Foundation",
+      "Automation",
+      "Integrations",
+      "Release",
+      "Operations"
+    ]
+  }
+}
