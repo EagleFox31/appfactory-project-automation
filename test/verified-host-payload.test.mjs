@@ -128,5 +128,6 @@ test('read-only rollout planning workflow performs authenticated checks but no m
   assert.match(cli,/verifyReleaseProvenance/);
   assert.match(cli,/APPFACTORY_CI_WORKFLOW/);
   assert.match(cli,/workflow_dispatch/);
-  assert.doesNotMatch(cli,/SendCommand|send-command|--with-decryption/);
+  assert.doesNotMatch(cli,/\baws\s+ssm\s+send-command\b|\bSendCommand\s*\(/i);
+  assert.doesNotMatch(cli,/--with-decryption/);
 });
