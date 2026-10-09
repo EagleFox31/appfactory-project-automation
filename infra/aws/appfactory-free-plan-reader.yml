@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  AppFactory per-project GitHub Actions OIDC role for read-only AWS Free Plan
+  inspection. No compute, no SSM execution, no IAM write permissions.
+Parameters:
+  ProjectId:
+    Type: String
+    AllowedPattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$'
+  Environment:
+    Type: String
+    AllowedValues: [staging]
+  GitHubOwner:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9][A-Za-z0-9-]{0,38}$'
+  GitHubOwnerId:
+    Type: String
+    AllowedPattern: '^[0-9]+$'
+  GitHubRepository:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9._-]+$'
+  GitHubRepositoryId:
+    Type: String
+    AllowedPattern: '^[0-9]+$'
+Resources:
+  FreePlanReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectId}-${Environment}-free-plan-read'
+      Description: Read-only Free Tier account plan check for isolated AppFactory staging
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:${Environment}'
+      Policies:
+        - PolicyName: read-only-aws-free-plan
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - freetier:GetAccountPlanState
+                Resource: '*'
+Outputs:
+  ReadOnlyRoleArn:
+    Value: !GetAtt FreePlanReadRole.Arn
+    Description: Non-secret ARN of dedicated OIDC read-only role
