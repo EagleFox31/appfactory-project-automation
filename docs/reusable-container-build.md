@@ -63,6 +63,14 @@ jobs:
 
 **Never** call the image publishing workflow on `pull_request` or ordinary `push`. Its validation fails closed unless a successful trusted release CI event is supplied. Reviewed branch protection, release marker governance and GHCR visibility must be enforced by the consumer.
 
+## Immutable image manifest after release publishing
+
+After **every** image in the release matrix is published successfully, the workflow now collects a short JSON receipt containing the image name, GHCR repository, **exact commit SHA** and Buildx `sha256:...` digest. A separate aggregate job enforces the complete image set and matching repository/SHA, rejects duplicates or mutable tags, and uploads `appfactory-release-manifest` with a checksum for 90 days.
+
+The resulting JSON includes the consumer repository, project ID, environment, exact SHA, triggering **successful CI run ID**, publishing **build run ID**, timestamp and per-image immutable `ghcr.io/...@sha256:...` reference + supported architecture. The aggregate GitHub Actions result **fails** if publishing succeeds but no validated manifest is produced.
+
+**Important:** A checksum guards artifact corruption, not signature authenticity. Future rollout must download the artifact using GitHub's authenticated API from a **verified successful build run** and recheck the run, CI provenance, SHA, repository, environment and digest set. Never accept a user-provided manifest path without verifying the run of origin. No automatic deployment is triggered.
+
 ## Future work before live AWS/SSM
 
 Phase 2 requires an independently reviewed SSM adapter with per-app OIDC trust, remote instance identity verification, explicit manual production approval, no mutable `latest` tags, verified digest-based rollout, backups, health checks and recoverable rollback.
