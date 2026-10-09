@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "projectId": "atelier-maitre",
+  "environment": "staging",
+  "releaseBranch": "main",
+  "releaseMarker": "version.txt",
+  "composePath": "deploy/docker/docker-compose.aws.yml",
+  "platforms": [
+    "linux/amd64"
+  ],
+  "images": [
+    {
+      "name": "api",
+      "dockerfile": "deploy/docker/Dockerfile.api",
+      "context": "."
+    },
+    {
+      "name": "web",
+      "dockerfile": "deploy/docker/Dockerfile.web",
+      "context": "."
+    }
+  ]
+}

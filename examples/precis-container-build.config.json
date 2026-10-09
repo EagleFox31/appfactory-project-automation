@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "projectId": "precis-translation",
+  "environment": "staging",
+  "releaseBranch": "main",
+  "releaseMarker": "CHANGELOG.md",
+  "composePath": "docker-compose.yml",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "images": [
+    {
+      "name": "api",
+      "dockerfile": "backend/Dockerfile",
+      "context": "."
+    },
+    {
+      "name": "web",
+      "dockerfile": "frontend/Dockerfile",
+      "context": "."
+    }
+  ]
+}
