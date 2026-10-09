@@ -1,0 +1,158 @@
+name: AppFactory - provision Precis staging reader (manual IAM-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      consumer_sha:
+        description: Exact reviewed main-branch commit of public Precis repository
+        type: string
+        required: true
+      apply:
+        description: Apply approved IAM-only stack (false = read-only preflight)
+        type: boolean
+        default: false
+        required: true
+      confirmation:
+        description: Exact approval phrase for apply only
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: appfactory-precis-staging-iam
+  cancel-in-progress: false
+
+jobs:
+  deploy-reader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: eu-west-3
+      AWS_ACCOUNT: '458018461157'
+      CFN_STACK: precis-staging-iam-readonly
+      APPFACTORY_READER_ROLE: precis-translation-staging-free-plan-read
+    steps:
+      - name: Fail closed on branch, code SHA and approval
+        shell: bash
+        env:
+          CONSUMER_SHA: ${{ inputs.consumer_sha }}
+          APPLY: ${{ inputs.apply }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          [[ "$CONSUMER_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          if [[ "$APPLY" == true ]]; then
+            [[ "$CONFIRMATION" == APPLY_PRECIS_STAGING_READER ]] || {
+              echo "::error::Explicit IAM-only apply confirmation missing"
+              exit 1
+            }
+          elif [[ "$APPLY" != false ]]; then
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/Pr-cis-Translation
+          ref: ${{ inputs.consumer_sha }}
+          path: .precis
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Bind to exact reviewed Précis staging template
+        shell: bash
+        env:
+          CONSUMER_SHA: ${{ inputs.consumer_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git -C .precis rev-parse HEAD)" == "$CONSUMER_SHA" ]] || exit 1
+          test -f .precis/deploy/infra/aws-free-plan-readonly-role.yml
+          node scripts/deployment/inspect-precis-staging-iam-template.mjs
+      - name: Assume dedicated AppFactory staging IAM deployer through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::458018461157:role/appfactory-staging-iam-deployer
+          aws-region: eu-west-3
+          role-session-name: appfactory-precis-staging-iam
+          role-duration-seconds: 900
+      - name: Check Free Plan and independent AWS identity, no mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/appfactory-sts-identity.json"
+          aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/appfactory-free-plan-state.json"
+          node scripts/deployment/verify-aws-free-plan.mjs
+      - name: Validate exact IAM template with CloudFormation (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template \
+            --region "$AWS_REGION" \
+            --template-body file://.precis/deploy/infra/aws-free-plan-readonly-role.yml
+      - name: Report readiness without any AWS resource mutation
+        if: ${{ !inputs.apply }}
+        run: |
+          echo "### Read-only IAM staging preflight complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "No stack, change set, IAM role, server, EC2 or SSM action created." >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare one narrowly scoped reader-only change set
+        if: ${{ inputs.apply }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$CFN_STACK" >/dev/null 2>&1; then
+            echo "::error::Existing stack detected. First-install-only workflow refuses updates."
+            exit 1
+          fi
+          changeset="appfactory-precis-staging-${GITHUB_RUN_ID}"
+          echo "CHANGESET=$changeset" >> "$GITHUB_ENV"
+          aws cloudformation create-change-set \
+            --region "$AWS_REGION" \
+            --stack-name "$CFN_STACK" \
+            --change-set-name "$changeset" \
+            --change-set-type CREATE \
+            --role-arn "arn:aws:iam::${AWS_ACCOUNT}:role/appfactory-staging-iam-cfn-execution" \
+            --template-body file://.precis/deploy/infra/aws-free-plan-readonly-role.yml \
+            --parameters \
+              "ParameterKey=GitHubOidcProviderArn,ParameterValue=arn:aws:iam::${AWS_ACCOUNT}:oidc-provider/token.actions.githubusercontent.com" \
+              "ParameterKey=PermissionsBoundaryArn,ParameterValue=arn:aws:iam::${AWS_ACCOUNT}:policy/appfactory-staging-free-plan-boundary" \
+            --capabilities CAPABILITY_NAMED_IAM
+          aws cloudformation wait change-set-create-complete \
+            --region "$AWS_REGION" --stack-name "$CFN_STACK" --change-set-name "$changeset"
+          aws cloudformation describe-change-set \
+            --region "$AWS_REGION" --stack-name "$CFN_STACK" \
+            --change-set-name "$changeset" --output json > "$RUNNER_TEMP/appfactory-precis-changeset.json"
+          node scripts/deployment/inspect-precis-staging-iam-changeset.mjs
+      - name: Execute explicitly approved IAM-only change set
+        if: ${{ inputs.apply }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation execute-change-set \
+            --region "$AWS_REGION" --stack-name "$CFN_STACK" --change-set-name "$CHANGESET"
+          aws cloudformation wait stack-create-complete --region "$AWS_REGION" --stack-name "$CFN_STACK"
+          role="$(aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$CFN_STACK" \
+            --query "Stacks[0].Outputs[?OutputKey=='ReadOnlyRoleArn'].OutputValue | [0]" --output text)"
+          [[ "$role" == "arn:aws:iam::${AWS_ACCOUNT}:role/${APPFACTORY_READER_ROLE}" ]] || exit 1
+          echo "Reader-only role created and verified: $role" >> "$GITHUB_STEP_SUMMARY"
+      - name: Erase private account inspection snapshots
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/appfactory-sts-identity.json" \
+            "$RUNNER_TEMP/appfactory-free-plan-state.json" \
+            "$RUNNER_TEMP/appfactory-precis-changeset.json"
+
+# This workflow cannot bootstrap its own AWS IAM deployer role.
+# Onboarding beyond the reader-only role requires a separate audited policy and approval.
+# Explicit apply flag, exact phrase, main branch and staging environment are all mandatory.
