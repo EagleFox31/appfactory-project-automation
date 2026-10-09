@@ -94,6 +94,10 @@ Resources:
                 Effect: Allow
                 Action: cloudformation:ValidateTemplate
                 Resource: '*'
+              - Sid: ReadCurrentFreePlanCredits
+                Effect: Allow
+                Action: freetier:GetAccountPlanState
+                Resource: '*'
               - Sid: DelegateOnlyToIsolatedCloudFormationRole
                 Effect: Allow
                 Action: iam:PassRole
