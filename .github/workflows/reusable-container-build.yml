@@ -1,0 +1,143 @@
+name: Reusable container build (GHCR)
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        description: Path to consumer container configuration
+        type: string
+        required: false
+        default: .github/appfactory-deploy.json
+      mode:
+        description: plan is read-only; publish requires successful release-only CI
+        type: string
+        required: false
+        default: plan
+      source_sha:
+        description: Exact 40-character consumer commit SHA
+        type: string
+        required: true
+      appfactory_ref:
+        description: Reviewed immutable AppFactory source SHA
+        type: string
+        required: true
+    outputs:
+      publish_eligible:
+        value: ${{ jobs.plan.outputs.eligible }}
+      source_sha:
+        value: ${{ jobs.plan.outputs.source_sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      eligible: ${{ steps.plan.outputs.eligible }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - name: Checkout exact consumer SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Checkout pinned AppFactory runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate release eligibility and image matrix
+        id: plan
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_DEPLOY_MODE: ${{ inputs.mode }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node .appfactory/scripts/deployment/plan.mjs
+
+  publish:
+    if: ${{ needs.plan.outputs.eligible == 'true' }}
+    needs: plan
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout CI-proven source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
+      - name: Prepare QEMU for ARM64 support
+        uses: docker/setup-qemu-action@v3
+      - name: Prepare Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR with ephemeral GitHub token
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push SHA-tagged image with provenance
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ matrix.tag }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: true
+      - name: Report immutable image digest
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: |
+          echo "### Image published" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image digest: $IMAGE@$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source commit: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  result:
+    if: always()
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require honest release publishing result
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          ELIGIBLE: ${{ needs.plan.outputs.eligible }}
+          REASON: ${{ needs.plan.outputs.reason }}
+        run: |
+          if [[ "$PLAN_RESULT" != success ]]; then
+            echo "::error::AppFactory container plan failed"
+            exit 1
+          fi
+          if [[ "$ELIGIBLE" == true && "$PUBLISH_RESULT" != success ]]; then
+            echo "::error::Image publishing failed: $PUBLISH_RESULT"
+            exit 1
+          fi
+          if [[ "$ELIGIBLE" != true ]]; then
+            echo "### Image publishing was intentionally skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Reason: $REASON" >> "$GITHUB_STEP_SUMMARY"
+          fi
