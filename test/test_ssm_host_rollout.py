@@ -61,12 +61,31 @@ class HostRolloutTest(unittest.TestCase):
         self.fail_health=False
         self.corrupt_backup=False
         self.fail_new_up=False
+        self.dirty_checkout=False
+        self.modified_hook=False
+        self.tracked_runtime_env=False
+        self.untracked_hook=False
 
     def fake_capture(self,args,cwd=None):
         if args[1:4] == ["remote","get-url","origin"]:
             return "https://github.com/"+REPOSITORY+".git"
         if args[1:4] == ["rev-parse","HEAD"]:
             return SHA
+        if args[1:3] == ["status","--porcelain"]:
+            return " M docker-compose.yml" if self.dirty_checkout else ""
+        if args[1:4] == ["ls-files","--cached","--"]:
+            file=args[4]
+            if file=="backend/.env":
+                return file if self.tracked_runtime_env else ""
+            if file=="scripts/backup.sh" and self.untracked_hook:
+                return ""
+            return file
+        if args[1]=="rev-parse" and args[2].startswith("HEAD:"):
+            return "b"*40
+        if args[1]=="hash-object":
+            if self.modified_hook and args[-1]=="scripts/backup.sh":
+                return "c"*40
+            return "b"*40
         raise AssertionError(args)
 
     def fake_run(self,args,cwd=None,env=None):
@@ -134,6 +153,27 @@ class HostRolloutTest(unittest.TestCase):
         with self.assertRaisesRegex(host.RolloutError,"Compose definition changed"):
             self.launch()
         self.assertFalse(any(cmd[0]=="bash" for cmd in self.calls))
+
+    def test_dirty_checkout_is_rejected_before_backup_or_docker(self):
+        self.dirty_checkout=True
+        with self.assertRaisesRegex(host.RolloutError,"modified tracked files"):
+            self.launch()
+        self.assertFalse(self.calls)
+
+    def test_untracked_or_modified_backup_hook_is_rejected_before_mutation(self):
+        for key, expected in (("untracked_hook","not tracked"),("modified_hook","differs")):
+            setattr(self,key,True)
+            self.calls.clear()
+            with self.assertRaisesRegex(host.RolloutError,expected):
+                self.launch()
+            self.assertFalse(self.calls)
+            setattr(self,key,False)
+
+    def test_git_tracked_runtime_env_cannot_be_overwritten(self):
+        self.tracked_runtime_env=True
+        with self.assertRaisesRegex(host.RolloutError,"destination is tracked"):
+            self.launch()
+        self.assertFalse(self.calls)
 
     def test_rejects_foreign_and_mutable_refs_and_shell_attack(self):
         for change in (
