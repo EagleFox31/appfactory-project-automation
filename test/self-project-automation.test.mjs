@@ -21,7 +21,7 @@ test('AppFactory dogfoods Project automation with a valid self-owned backlog', (
   const openIssue = {
     number: 75,
     title: '[CI/CD] Reusable Docker Compose deployment',
-    body: '<!-- appfactory-project\\npriority: P1\\nworkType: Feature\\nphase: Foundation\\nsize: L\\n-->'
+    body: '<!-- appfactory-project\npriority: P1\nworkType: Feature\nphase: Foundation\nsize: L\n-->'
   };
   const metadata = issueMetadata(openIssue, config);
   assert.deepEqual(metadata, {
