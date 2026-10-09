@@ -1,0 +1,207 @@
+name: Reusable staging SSM Compose rollout (explicit approval only)
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        type: string
+        required: false
+        default: .github/appfactory-deploy.json
+      appfactory_ref:
+        description: Reviewed immutable AppFactory commit
+        type: string
+        required: true
+      source_sha:
+        description: Exact source SHA to deploy
+        type: string
+        required: true
+      environment:
+        description: Initial adapter only accepts staging
+        type: string
+        required: true
+      build_run_id:
+        description: Successful immutable image publisher run
+        type: string
+        required: true
+      ci_workflow:
+        type: string
+        required: true
+      publish_workflow:
+        type: string
+        required: true
+      execute:
+        description: Explicitly enable actual deployment (false verifies provenance only)
+        type: boolean
+        required: false
+        default: false
+      confirmation:
+        description: Exact deploy:<projectId>:staging:<40-character-sourceSha>
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+      actions: read
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-container-release-verify.yml@efa541a361090397b3c4c1b1ddbd6dc3ccd29d0a
+    with:
+      config_path: ${{ inputs.config_path }}
+      appfactory_ref: ${{ inputs.appfactory_ref }}
+      source_sha: ${{ inputs.source_sha }}
+      environment: ${{ inputs.environment }}
+      build_run_id: ${{ inputs.build_run_id }}
+      ci_workflow: ${{ inputs.ci_workflow }}
+      publish_workflow: ${{ inputs.publish_workflow }}
+
+  deploy:
+    if: ${{ inputs.execute && needs.verify.result == 'success' && needs.verify.outputs.verified == 'true' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: appfactory-ssm-rollout-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout exact trusted consumer release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout reviewed AppFactory rollout runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Download exact immutable publisher artifact again
+        uses: actions/download-artifact@v4
+        with:
+          name: appfactory-release-manifest
+          path: .
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+      - name: Reverify CI and publisher provenance before any AWS credentials
+        id: verified
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+          APPFACTORY_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          APPFACTORY_CI_WORKFLOW: ${{ inputs.ci_workflow }}
+          APPFACTORY_PUBLISH_WORKFLOW: ${{ inputs.publish_workflow }}
+        run: node .appfactory/scripts/deployment/verify-release-provenance.mjs
+      - name: Validate explicit SSM target before AWS authentication
+        id: target
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+        run: node .appfactory/scripts/deployment/prepare-ssm-preflight.mjs
+      - name: Assume exact application/environment AWS role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.target.outputs.role_arn }}
+          aws-region: ${{ steps.target.outputs.region }}
+          role-session-name: appfactory-ssm-rollout
+          role-duration-seconds: 1800
+      - name: Inspect the real EC2 and SSM target immediately before rollout
+        env:
+          TARGET_ID: ${{ steps.target.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/aws-sts.json"
+          aws ec2 describe-instances --instance-ids "$TARGET_ID" --output json > "$RUNNER_TEMP/aws-ec2.json"
+          aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$TARGET_ID" \
+            --output json > "$RUNNER_TEMP/aws-ssm.json"
+      - name: Verify tenant identity and prepare reviewed SSM command
+        id: pack
+        env:
+          APPFACTORY_PROVENANCE_VERIFIED: ${{ steps.verified.outputs.verified }}
+          APPFACTORY_EXECUTE: ${{ inputs.execute }}
+          APPFACTORY_APPROVAL: ${{ inputs.confirmation }}
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+        run: node .appfactory/scripts/deployment/prepare-ssm-rollout.mjs
+      - name: Send scoped command to approved SSM Linux instance
+        id: send
+        env:
+          COMMAND_FILE: ${{ steps.pack.outputs.command_file }}
+          INSTANCE_ID: ${{ steps.pack.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --instance-ids "$INSTANCE_ID" \
+            --comment "AppFactory approved staging rollout" \
+            --parameters "file://$COMMAND_FILE" \
+            --timeout-seconds 3600 \
+            --max-concurrency "1" --max-errors "0" \
+            --query 'Command.CommandId' --output text)
+          if ! [[ "$COMMAND_ID" =~ ^[a-f0-9-]{36}$ ]]; then
+            echo "::error::SSM did not return a valid command ID"
+            exit 1
+          fi
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+      - name: Require a verified successful host rollout
+        env:
+          COMMAND_ID: ${{ steps.send.outputs.command_id }}
+          INSTANCE_ID: ${{ steps.pack.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || true)
+            case "$STATUS" in
+              Success)
+                echo "SSM host rollout completed successfully." >> "$GITHUB_STEP_SUMMARY"
+                exit 0 ;;
+              Failed|Cancelled|TimedOut|DeliveryTimedOut|Undeliverable|Terminated)
+                echo "::error::SSM host rollout failed with status $STATUS. Inspect the host recovery runbook."
+                exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::SSM rollout did not complete inside the approved wait window."
+          exit 1
+
+  result:
+    if: always()
+    needs: [verify, deploy]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Never report a skipped/failed real rollout as success
+        env:
+          VERIFY: ${{ needs.verify.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          EXECUTE: ${{ inputs.execute }}
+        run: |
+          if [[ "$VERIFY" != success ]]; then
+            echo "::error::Release provenance verification failed"
+            exit 1
+          fi
+          if [[ "$EXECUTE" == true && "$DEPLOY" != success ]]; then
+            echo "::error::Requested staging rollout did not succeed: $DEPLOY"
+            exit 1
+          fi
+          if [[ "$EXECUTE" != true ]]; then
+            echo "Provenance verified only: no AWS commands were invoked." >> "$GITHUB_STEP_SUMMARY"
+          fi
