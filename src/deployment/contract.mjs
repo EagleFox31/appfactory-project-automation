@@ -40,7 +40,8 @@ function deployment(value, projectId, environment, images) {
   object(value, 'deployment');
   onlyKeys(value, ['transport', 'region', 'roleArn', 'instanceId',
     'ssmParameterPrefix', 'healthPath', 'composeProject', 'serviceNames',
-    'imageServices', 'backupKinds', 'healthUrl'], 'deployment');
+    'imageServices', 'backupKinds', 'healthUrl',
+    'runtimeEnvTarget', 'predeployHook'], 'deployment');
   if (value.transport !== 'aws-ssm') fail('deployment.transport', 'only aws-ssm supported');
   string(value.region, 'deployment.region', /^[a-z]{2}(?:-[a-z]+)+-\d+$/);
   string(value.roleArn, 'deployment.roleArn', /^arn:aws:iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]+$/);
@@ -75,6 +76,16 @@ function deployment(value, projectId, environment, images) {
     value.backupKinds.forEach((kind,i) => string(kind, 'deployment.backupKinds['+i+']', SLUG));
     unique(value.backupKinds, 'deployment.backupKinds');
   }
+  for (const field of ['runtimeEnvTarget', 'predeployHook']) {
+    if (value[field] !== undefined) {
+      string(value[field], 'deployment.' + field, PATH, 240);
+      if (value[field].startsWith('./') || value[field].includes('//')
+          || value[field].includes('/./')) fail('deployment.' + field, 'unsafe path');
+    }
+  }
+  if (value.runtimeEnvTarget !== undefined
+      && !value.runtimeEnvTarget.split('/').at(-1).startsWith('.env'))
+    fail('deployment.runtimeEnvTarget', 'must be a dedicated .env file');
   if (value.healthUrl !== undefined) {
     string(value.healthUrl, 'deployment.healthUrl',
       /^http:\/\/127\.0\.0\.1(?::[1-9][0-9]{1,4})?\/[A-Za-z0-9_./-]*$/, 200);
