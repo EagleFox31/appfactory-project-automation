@@ -32,15 +32,14 @@ permissions:
   contents: read
 jobs:
   plan:
-    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-container-build.yml@APPFACTORY_REVIEWED_SHA
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-container-plan.yml@APPFACTORY_REVIEWED_SHA
     with:
-      mode: plan
       config_path: .github/appfactory-deploy.json
       source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       appfactory_ref: APPFACTORY_REVIEWED_SHA
 ```
 
-The plan job requires only `contents: read`. It does not run consumer code, build an image, request an AWS token, install secrets or invoke a server.
+The separate **plan-only reusable workflow** has no GHCR write job and requires only `contents: read`. GitHub Actions forbids a read-only caller from invoking a reusable workflow that contains `packages: write`, even if that job would be skipped. It does not run consumer code, build an image, request an AWS token, install secrets or invoke a server.
 
 ## Calling after CI for an actual release image
 
@@ -58,12 +57,11 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-container-build.yml@APPFACTORY_REVIEWED_SHA
     with:
-      mode: publish
       source_sha: ${{ github.event.workflow_run.head_sha }}
       appfactory_ref: APPFACTORY_REVIEWED_SHA
 ```
 
-**Never** enable `publish` on `pull_request` or ordinary `push`. Reviewed branch protection, release marker governance and GHCR visibility must be enforced by the consumer.
+**Never** call the image publishing workflow on `pull_request` or ordinary `push`. Its validation fails closed unless a successful trusted release CI event is supplied. Reviewed branch protection, release marker governance and GHCR visibility must be enforced by the consumer.
 
 ## Future work before live AWS/SSM
 
