@@ -40,7 +40,8 @@ function deployment(value, projectId, environment, images) {
   object(value, 'deployment');
   onlyKeys(value, ['transport', 'region', 'roleArn', 'instanceId',
     'ssmParameterPrefix', 'healthPath', 'composeProject', 'serviceNames',
-    'imageServices', 'backupKinds', 'healthUrl'], 'deployment');
+    'imageServices', 'backupKinds', 'healthUrl',
+    'runtimeEnvTarget', 'predeployHook'], 'deployment');
   if (value.transport !== 'aws-ssm') fail('deployment.transport', 'only aws-ssm supported');
   string(value.region, 'deployment.region', /^[a-z]{2}(?:-[a-z]+)+-\d+$/);
   string(value.roleArn, 'deployment.roleArn', /^arn:aws:iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]+$/);
@@ -80,6 +81,19 @@ function deployment(value, projectId, environment, images) {
       /^http:\/\/127\.0\.0\.1(?::[1-9][0-9]{1,4})?\/[A-Za-z0-9_./-]*$/, 200);
     if (value.healthUrl.includes('..') || value.healthUrl.includes('//', 8))
       fail('deployment.healthUrl', 'unsafe localhost health path');
+  }
+  if (value.runtimeEnvTarget !== undefined) {
+    const field = 'deployment.runtimeEnvTarget';
+    string(value.runtimeEnvTarget, field, PATH, 240);
+    if (value.runtimeEnvTarget.startsWith('./') ||
+        value.runtimeEnvTarget.includes('//') ||
+        value.runtimeEnvTarget.includes('/./')) fail(field, 'noncanonical');
+    const filename = value.runtimeEnvTarget.split('/').at(-1);
+    if (!/^\\.env(?:\\.[a-zA-Z0-9_-]+)?$/.test(filename))
+      fail(field, 'must target a dedicated .env file');
+  }
+  if (value.predeployHook !== undefined) {
+    repoPath(value.predeployHook, process.cwd(), 'deployment.predeployHook');
   }
   return value;
 }
