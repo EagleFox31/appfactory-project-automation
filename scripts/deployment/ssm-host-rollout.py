@@ -77,7 +77,9 @@ def capture(args: list[str], cwd: Path | None = None) -> str:
     return result.stdout.strip()
 
 
-def check_release_checkout(repo: Path, repository: str, source_sha: str) -> None:
+def check_release_checkout(repo: Path, repository: str, source_sha: str,
+                           compose_path: str, hook_path: str,
+                           env_target: str) -> None:
     require(repo.is_dir() and not repo.is_symlink() and (repo / ".git").exists(),
             "host checkout is missing or unsafe")
     origin = capture(["git", "remote", "get-url", "origin"], cwd=repo)
@@ -89,6 +91,24 @@ def check_release_checkout(repo: Path, repository: str, source_sha: str) -> None
     require(origin in allowed, "host Git origin does not match expected repository")
     require(capture(["git", "rev-parse", "HEAD"], cwd=repo) == source_sha,
             "host checkout must already be at the CI-proven SHA")
+    require(not capture(["git", "status", "--porcelain", "--untracked-files=no"],
+                        cwd=repo),
+            "host checkout has modified tracked files")
+    # HEAD alone does not prove the Compose/hook files match their reviewed
+    # contents: git assume-unchanged/skip-worktree could hide local edits.
+    for relative in (compose_path, hook_path):
+        require(capture(["git", "ls-files", "--cached", "--", relative],
+                        cwd=repo) == relative,
+                "critical rollout file is not tracked by the proven commit")
+        blob = capture(["git", "rev-parse", "HEAD:" + relative], cwd=repo)
+        actual = capture(["git", "hash-object", "--path=" + relative, relative],
+                         cwd=repo)
+        require(blob == actual and bool(re.fullmatch(r"[a-f0-9]{40}", blob)),
+                "critical rollout file differs from proven Git commit")
+    # Runtime credentials must never overwrite a tracked repository file.
+    require(not capture(["git", "ls-files", "--cached", "--", env_target],
+                        cwd=repo),
+            "runtime .env destination is tracked by Git")
 
 
 def validate_input(payload: dict) -> dict:
@@ -249,7 +269,9 @@ def execute_rollout(payload: dict, base: Path = ROOT) -> dict:
             and root.resolve() == base.resolve() / payload["projectId"] / payload["environment"],
             "dedicated host root not provisioned")
     repo = root / "repo"
-    check_release_checkout(repo, payload["repository"], payload["sourceSha"])
+    check_release_checkout(repo, payload["repository"], payload["sourceSha"],
+                           payload["composePath"], payload["predeployHook"],
+                           payload["runtimeEnvTarget"])
     lock_path = root / ".rollout.lock"
     with lock_path.open("a+") as lock:
         try:
