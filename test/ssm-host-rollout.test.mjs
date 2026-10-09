@@ -9,7 +9,7 @@ test('host-side Compose rollout/backup/rollback simulation passes under Python',
     {encoding:'utf8',timeout:120000});
   assert.equal(cmd.status,0,
     'Python rollout safety suite failed:\n'+cmd.stdout+'\n'+cmd.stderr);
-  assert.match(cmd.stderr,/Ran 6 tests/);
+  assert.match(cmd.stderr,/Ran 9 tests/);
 });
 test('host rollout has no mutable tag, docker down, volume pruning or external health endpoint',()=>{
   const src=readFileSync(new URL('../scripts/deployment/ssm-host-rollout.py',import.meta.url),'utf8');
