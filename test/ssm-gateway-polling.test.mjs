@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {waitForSsmInvocation} from '../src/deployment/ssm-gateway-polling.mjs';
 const target={commandId:'12345678-1234-1234-1234-123456789abc',instanceId:'i-0123456789abcdef0'};
-const response=(status,code=0)=>({...target,StatusDetails:status,ResponseCode:code});
+const response=(status,code=0)=>({CommandId:target.commandId,InstanceId:target.instanceId,StatusDetails:status,ResponseCode:code});
 const clock=()=>{let time=0;return {now:()=>time,sleep:async ms=>{time+=ms;}}};
 test('polls only the verified invocation until exit zero',async()=>{
  const c=clock(), statuses=[response('InProgress'),response('Success')];
