@@ -25,6 +25,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 | **Impact-Aware CI** | `.github/workflows/reusable-impact-analysis.yml@v1` | Change-impact analysis that maps changed paths to affected surfaces and required gates before expensive CI/CD work runs |
 | **Container plan (read-only)** | `.github/workflows/reusable-container-plan.yml` | Validate consumer Docker configuration and source identity without any write permission or cloud call |
 | **Container builds (GHCR)** | `.github/workflows/reusable-container-build.yml` | Validated consumer Docker profiles, read-only plan and release-only SHA-tagged multi-arch image publishing; **no AWS/server deploy** ([contract](docs/reusable-container-build.md)) |
+| **AWS SSM target inspection** | `.github/workflows/reusable-container-ssm-preflight.yml` | OIDC read-only EC2/SSM verification of **dedicated existing** target (account, tags, CPU, repository/environment) without cloud changes; see [runbook](docs/ssm-readonly-preflight.md) |
 
 The capabilities are independent. A repository can adopt Project automation, governance, impact-aware CI and release automation separately.
 
