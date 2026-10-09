@@ -1,0 +1,62 @@
+name: AppFactory AWS Free Plan preflight - automatic and read only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/auto-aws-free-plan-preflight.yml
+      - infra/aws/appfactory-central-staging-iam-bootstrap.yml
+      - src/deployment/aws-free-plan-gate.mjs
+      - scripts/deployment/auto-aws-free-plan-preflight.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: appfactory-aws-staging-readonly-preflight
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Audit real AWS Free Plan without cloud writes
+    if: github.repository == 'EagleFox31/appfactory-project-automation' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Authenticate against Trigenys with reviewed GitHub OIDC role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::458018461157:role/appfactory-staging-iam-deployer
+          aws-region: eu-west-3
+          role-session-name: appfactory-readonly-free-tier
+          role-duration-seconds: 900
+      - name: Inspect independent AWS identity and Free Plan (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/appfactory-auto-sts.json"
+          aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/appfactory-auto-freetier.json"
+      - name: Validate credits, plan and account with fail-closed gates
+        run: node scripts/deployment/auto-aws-free-plan-preflight.mjs
+      - name: Clean up transient account inspection output
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/appfactory-auto-sts.json" "$RUNNER_TEMP/appfactory-auto-freetier.json"
+
+# This workflow never invokes IAM/CloudFormation writes, EC2, SSM or provisioners.
+# The GitHub staging environment may be auto-created on first use. An unprotected
+# environment must not be considered approval for any separate IAM apply workflow.
