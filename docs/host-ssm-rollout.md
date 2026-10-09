@@ -87,3 +87,7 @@ The hook must create all required archives (PostgreSQL dump + translated-file vo
 ## Remaining work before real deployment
 
 A separate, explicitly approved PR must create the **runner-side SSM gateway** to validate the complete GitHub release provenance, assume a per-tenant AWS OIDC role, re-inspect exact EC2+SSM identity, transport the reviewed Python script/payload through SendCommand, poll its output, and fail on host errors. Only run it via manually dispatched, reviewer-protected staging environment. **No shared use of Atelier Maître's instance or deployment roles.**
+
+## Pinned checkout integrity
+
+Before copying host credentials or running the backup hook, the executor now requires a clean tracked working tree. The Compose file and predeployment hook must both be Git-tracked and match the exact file blob in the reviewed `HEAD` commit, even when Git's assume-unchanged/skip-worktree metadata could hide modifications. The runtime `.env` destination must **not** be Git-tracked, so a remote secret file cannot overwrite versioned application code. The executor never runs `git reset`, `git clean` or deletes files to repair unsafe state; it fails closed for operator intervention.
