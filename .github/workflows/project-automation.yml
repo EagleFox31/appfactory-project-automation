@@ -1,0 +1,34 @@
+name: Project automation
+
+on:
+  issues:
+    types: [opened, reopened, edited, closed]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, closed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Optional issue number to resync. Leave empty to bootstrap/reconcile the Project."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync-project:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83
+    with:
+      authentication: broker-user
+      broker_url: https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token
+      broker_audience: appfactory-project-automation
+      appfactory_ref: 14d51168311c25f41d89df370c5e2ad2d5f42e83
+      config_path: .github/project-config.json
+      issue_number: ${{ inputs.issue_number }}
