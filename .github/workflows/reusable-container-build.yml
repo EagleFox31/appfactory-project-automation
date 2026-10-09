@@ -111,9 +111,74 @@ jobs:
           echo "Image digest: $IMAGE@$DIGEST" >> "$GITHUB_STEP_SUMMARY"
           echo "Source commit: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record exact image digest for this build job
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+          IMAGE_REPOSITORY: ${{ matrix.image }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            const { IMAGE_NAME: name, IMAGE_REPOSITORY: image, SOURCE_SHA: sourceSha, IMAGE_DIGEST: digest } = process.env;
+            if (!/^sha256:[a-f0-9]{64}$/.test(digest)) throw new Error("Buildx did not provide a valid immutable digest");
+            writeFileSync("receipt-" + name + ".json", JSON.stringify({ name, image, sourceSha, digest }));
+          '
+      - name: Store trusted per-image receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: appfactory-image-receipt-${{ matrix.name }}
+          path: receipt-${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  manifest:
+    if: ${{ needs.plan.outputs.eligible == 'true' && needs.publish.result == 'success' }}
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout immutable consumer source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout reviewed manifest assembler
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Collect receipts from all successful image builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: appfactory-image-receipt-*
+          path: appfactory-receipts
+          merge-multiple: true
+      - name: Validate and assemble CI-bound image manifest
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: node .appfactory/scripts/deployment/assemble-release-manifest.mjs
+      - name: Preserve exact digest manifest with checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: appfactory-release-manifest
+          path: |
+            appfactory-release-manifest.json
+            appfactory-release-manifest.json.sha256
+          if-no-files-found: error
+          retention-days: 90
+
   result:
     if: always()
-    needs: [plan, publish]
+    needs: [plan, publish, manifest]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -121,6 +186,7 @@ jobs:
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
+          MANIFEST_RESULT: ${{ needs.manifest.result }}
           ELIGIBLE: ${{ needs.plan.outputs.eligible }}
           REASON: ${{ needs.plan.outputs.reason }}
         run: |
@@ -130,6 +196,10 @@ jobs:
           fi
           if [[ "$ELIGIBLE" == true && "$PUBLISH_RESULT" != success ]]; then
             echo "::error::Image publishing failed: $PUBLISH_RESULT"
+            exit 1
+          fi
+          if [[ "$ELIGIBLE" == true && "$MANIFEST_RESULT" != success ]]; then
+            echo "::error::Image release manifest creation failed: $MANIFEST_RESULT"
             exit 1
           fi
           if [[ "$ELIGIBLE" != true ]]; then
