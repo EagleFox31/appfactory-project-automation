@@ -78,7 +78,8 @@ def capture(args: list[str], cwd: Path | None = None) -> str:
 
 
 def check_release_checkout(repo: Path, repository: str, source_sha: str) -> None:
-    require(repo.is_dir() and (repo / ".git").exists(), "host checkout is missing")
+    require(repo.is_dir() and not repo.is_symlink() and (repo / ".git").exists(),
+            "host checkout is missing or unsafe")
     origin = capture(["git", "remote", "get-url", "origin"], cwd=repo)
     allowed = {
         "https://github.com/" + repository,
@@ -116,6 +117,8 @@ def validate_input(payload: dict) -> dict:
                 and not value.startswith("/") and
                 ".." not in value.split("/") and "//" not in value,
                 "unsafe " + key)
+    require(Path(payload["runtimeEnvTarget"]).name.startswith(".env"),
+            "runtime environment must be a dedicated .env file")
     images, mapping = payload["images"], payload["imageServices"]
     require(isinstance(images, dict) and 1 <= len(images) <= 6, "images missing")
     require(isinstance(mapping, dict) and set(mapping) == set(images), "image/service mismatch")
@@ -216,9 +219,13 @@ def write_override(path: Path, payload: dict, images: dict) -> None:
 
 
 def probe_health(url: str, attempts: int = 24, wait: int = 5) -> bool:
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+    opener = urllib.request.build_opener(NoRedirect())
     for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(url, timeout=4) as response:
+            with opener.open(url, timeout=4) as response:
                 if 200 <= response.status < 300:
                     return True
         except (OSError, ValueError):
@@ -236,7 +243,11 @@ def execute_rollout(payload: dict, base: Path = ROOT) -> dict:
     """
     validate_input(payload)
     root = base / payload["projectId"] / payload["environment"]
-    require(root.is_dir() and not root.is_symlink(), "dedicated host root not provisioned")
+    require(root.is_dir() and not root.is_symlink()
+            and (base / payload["projectId"]).is_dir()
+            and not (base / payload["projectId"]).is_symlink()
+            and root.resolve() == base.resolve() / payload["projectId"] / payload["environment"],
+            "dedicated host root not provisioned")
     repo = root / "repo"
     check_release_checkout(repo, payload["repository"], payload["sourceSha"])
     lock_path = root / ".rollout.lock"
@@ -264,7 +275,7 @@ def execute_rollout(payload: dict, base: Path = ROOT) -> dict:
                 "first-time deployment requires a separately reviewed bootstrap")
         previous = json_file(state_path)
         rollback_images = validate_previous(previous, payload, checksum)
-        backup_path = root / "backups" / payload["sourceSha"]
+        backup_path = root / "backups" / payload["sourceSha"] / str(time.time_ns())
         backup_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         require(backup_path.resolve().is_relative_to((root/"backups").resolve()),
                 "backup root symlink escape")
