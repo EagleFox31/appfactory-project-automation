@@ -23,6 +23,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 | **.NET desktop releases** | `.github/workflows/release-dotnet-desktop.yml@v1` | Release Please + deterministic `dotnet publish` + versioned ZIP + SHA-256 checksum |
 | **Tauri desktop releases** | `.github/workflows/release-tauri-desktop.yml@v1` | Release Please + exact-SHA Tauri MSI build + install/uninstall validation + checksum/provenance |
 | **Impact-Aware CI** | `.github/workflows/reusable-impact-analysis.yml@v1` | Change-impact analysis that maps changed paths to affected surfaces and required gates before expensive CI/CD work runs |
+| **Container builds (GHCR)** | `.github/workflows/reusable-container-build.yml` | Validated consumer Docker profiles, read-only plan and release-only SHA-tagged multi-arch image publishing; **no AWS/server deploy** ([contract](docs/reusable-container-build.md)) |
 
 The capabilities are independent. A repository can adopt Project automation, governance, impact-aware CI and release automation separately.
 
