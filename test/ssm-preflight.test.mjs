@@ -93,7 +93,9 @@ test('every image must support the target instance CPU architecture',()=>{
 });
 test('workflow only inspects; it never has resource mutation actions',()=>{
   const file=readFileSync(new URL('../.github/workflows/reusable-container-ssm-preflight.yml',import.meta.url),'utf8');
-  assert.match(file,/workflow_dispatch/);
+  assert.match(file,/workflow_call/);
+  const preparer=readFileSync(new URL('../scripts/deployment/prepare-ssm-preflight.mjs',import.meta.url),'utf8');
+  assert.match(preparer,/eventName !== 'workflow_dispatch'/);
   assert.match(file,/environment: \$\{\{ needs\.validate\.outputs\.environment \}\}/);
   assert.match(file,/id-token: write/);
   assert.match(file,/configure-aws-credentials@v4/);
