@@ -36,10 +36,11 @@ function platforms(value, field) {
   unique(value, field);
   return value;
 }
-function deployment(value, projectId, environment) {
+function deployment(value, projectId, environment, images) {
   object(value, 'deployment');
   onlyKeys(value, ['transport', 'region', 'roleArn', 'instanceId',
-    'ssmParameterPrefix', 'healthPath', 'composeProject', 'serviceNames'], 'deployment');
+    'ssmParameterPrefix', 'healthPath', 'composeProject', 'serviceNames',
+    'imageServices', 'backupKinds', 'healthUrl'], 'deployment');
   if (value.transport !== 'aws-ssm') fail('deployment.transport', 'only aws-ssm supported');
   string(value.region, 'deployment.region', /^[a-z]{2}(?:-[a-z]+)+-\d+$/);
   string(value.roleArn, 'deployment.roleArn', /^arn:aws:iam::\d{12}:role\/[A-Za-z0-9+=,.@_/-]+$/);
@@ -53,6 +54,33 @@ function deployment(value, projectId, environment) {
   if (!Array.isArray(value.serviceNames) || value.serviceNames.length < 1) fail('deployment.serviceNames', 'required');
   value.serviceNames.forEach((n,i) => string(n, 'deployment.serviceNames[' + i + ']', SLUG));
   unique(value.serviceNames, 'deployment.serviceNames');
+  if (value.imageServices !== undefined) {
+    object(value.imageServices, 'deployment.imageServices');
+    const imageNames = images.map(image => image.name).sort();
+    if (Object.keys(value.imageServices).sort().join('|') !== imageNames.join('|'))
+      fail('deployment.imageServices', 'must map every release image exactly once');
+    const selected = Object.entries(value.imageServices).map(([image, service]) => {
+      string(service, 'deployment.imageServices.' + image, SLUG);
+      if (!value.serviceNames.includes(service))
+        fail('deployment.imageServices', 'service must be in deployment.serviceNames');
+      if (['db','postgres','database','redis','mongo','mongodb'].includes(service))
+        fail('deployment.imageServices', 'cannot replace a stateful service directly');
+      return service;
+    });
+    unique(selected, 'deployment.imageServices');
+  }
+  if (value.backupKinds !== undefined) {
+    if (!Array.isArray(value.backupKinds) || !value.backupKinds.length
+        || value.backupKinds.length > 8) fail('deployment.backupKinds', 'invalid');
+    value.backupKinds.forEach((kind,i) => string(kind, 'deployment.backupKinds['+i+']', SLUG));
+    unique(value.backupKinds, 'deployment.backupKinds');
+  }
+  if (value.healthUrl !== undefined) {
+    string(value.healthUrl, 'deployment.healthUrl',
+      /^http:\/\/127\.0\.0\.1(?::[1-9][0-9]{1,4})?\/[A-Za-z0-9_./-]*$/, 200);
+    if (value.healthUrl.includes('..') || value.healthUrl.includes('//', 8))
+      fail('deployment.healthUrl', 'unsafe localhost health path');
+  }
   return value;
 }
 export function validateSourceSha(value) {
@@ -88,7 +116,7 @@ export function validateContainerConfig(raw, { repository, root = process.cwd() 
   unique(images.map(x => x.name), 'images');
   return { schemaVersion: 1, projectId, environment, releaseBranch, releaseMarker,
     composePath, platforms: defaults, images,
-    deployment: raw.deployment === undefined ? null : deployment(raw.deployment, projectId, environment) };
+    deployment: raw.deployment === undefined ? null : deployment(raw.deployment, projectId, environment, images) };
 }
 export function publishEligibility({ mode, eventName, event, repository, sha, config, markerChanged }) {
   if (mode !== 'plan' && mode !== 'publish') fail('mode', 'expected plan or publish');
