@@ -1,0 +1,110 @@
+name: Reusable AWS SSM preflight (inspect only)
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        type: string
+        required: false
+        default: .github/appfactory-deploy.json
+      appfactory_ref:
+        description: Immutable reviewed AppFactory commit
+        type: string
+        required: true
+      source_sha:
+        description: Exact consumer commit to inspect
+        type: string
+        required: true
+      environment:
+        description: Must exactly match the consumer config environment
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      account: ${{ steps.target.outputs.account }}
+      role_arn: ${{ steps.target.outputs.role_arn }}
+      region: ${{ steps.target.outputs.region }}
+      instance_id: ${{ steps.target.outputs.instance_id }}
+      environment: ${{ steps.target.outputs.environment }}
+      project_id: ${{ steps.target.outputs.project_id }}
+      source_sha: ${{ steps.target.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify explicit target binding before obtaining any AWS credentials
+        id: target
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ inputs.environment }}
+        run: node .appfactory/scripts/deployment/prepare-ssm-preflight.mjs
+
+  inspect:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ needs.validate.outputs.environment }}
+    concurrency:
+      group: appfactory-ssm-inspect-${{ github.repository }}-${{ needs.validate.outputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Assume dedicated project/environment role via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.validate.outputs.role_arn }}
+          aws-region: ${{ needs.validate.outputs.region }}
+          role-session-name: appfactory-ssm-inspection
+          role-duration-seconds: 900
+      - name: Read only STS, EC2 and SSM target inventory
+        env:
+          TARGET_ID: ${{ needs.validate.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/aws-sts.json"
+          aws ec2 describe-instances --instance-ids "$TARGET_ID" --output json > "$RUNNER_TEMP/aws-ec2.json"
+          aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$TARGET_ID" \
+            --output json > "$RUNNER_TEMP/aws-ssm.json"
+      - name: Enforce exact repository/app tags, architecture and SSM online state
+        env:
+          APPFACTORY_DEPLOY_CONFIG: ${{ inputs.config_path }}
+          APPFACTORY_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          APPFACTORY_ENVIRONMENT: ${{ needs.validate.outputs.environment }}
+        run: node .appfactory/scripts/deployment/check-ssm-preflight.mjs
+
+# Intentionally no SSM SendCommand, EC2 create/modify, GHCR write or container rollout jobs.
