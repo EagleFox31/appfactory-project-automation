@@ -71,9 +71,11 @@ An independently approved run with `apply=true` and confirmation
 `APPLY_PRECIS_STAGING_READER` additionally creates a named CloudFormation
 change set, verifies exactly **one new IAM reader role** before execution,
 and creates only the isolated Précis role. The workflow fails on an existing
-stack rather than silently updating it. The Précis public repository supplies
-an exact 40-character reviewed main-branch SHA as `consumer_sha`; AppFactory
-also pins the approved template's Git blob.
+stack rather than silently updating it. AppFactory pins the reviewed public Précis main-branch commit directly as
+`PRECIS_REVIEWED_SHA` (currently `efa3f3492abca331453d9f814cc3e6269fbf6d79`),
+so no commit SHA needs to be copied into the manual workflow run. A future
+consumer template change requires a reviewed AppFactory PR updating this pin.
+AppFactory also pins the exact approved template Git blob.
 
 The role created for Précis is referenced by its known non-secret ARN in the
 Précis read-only Free Plan workflow. No per-project AWS key or ARN manual
