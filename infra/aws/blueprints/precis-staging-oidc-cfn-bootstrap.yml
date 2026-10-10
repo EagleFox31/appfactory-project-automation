@@ -25,7 +25,6 @@ Resources:
               - ssm:GetDeployablePatchSnapshotForInstance
               - ssm:GetDocument
               - ssm:GetManifest
-              - ssm:GetParameters
               - ssm:ListAssociations
               - ssm:ListInstanceAssociations
               - ssm:PutComplianceItems
@@ -49,6 +48,7 @@ Resources:
             Effect: Allow
             Action:
               - ssm:GetParameter
+              - ssm:GetParameters
             Resource: !Sub 'arn:${AWS::Partition}:ssm:eu-west-3:${AWS::AccountId}:parameter/precis-translation/staging/env'
 
   StagingExpiryBoundary:
