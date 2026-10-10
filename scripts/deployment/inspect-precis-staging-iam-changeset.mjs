@@ -18,8 +18,12 @@ if(data.StackName!=='precis-staging-iam-readonly')
 if(typeof data.StackId!=='string' ||
    !data.StackId.startsWith('arn:aws:cloudformation:eu-west-3:458018461157:stack/precis-staging-iam-readonly/'))
   deny('wrong account or stack ARN');
-if(data.RoleARN!=='arn:aws:iam::458018461157:role/appfactory-staging-iam-cfn-execution')
-  deny('unapproved CloudFormation service role');
+const expectedServiceRole='arn:aws:iam::458018461157:role/appfactory-staging-iam-cfn-execution';
+const actualStackRole=readFileSync(join(process.env.RUNNER_TEMP,'appfactory-precis-stack-role.txt'),'utf8').trim();
+if(actualStackRole!==expectedServiceRole)
+  deny('actual CloudFormation stack role differs from approved service role');
+if(data.RoleARN!=null && data.RoleARN!==expectedServiceRole)
+  deny('change set declares a different CloudFormation service role');
 const parameters=new Map((data.Parameters||[]).map(p=>[p.ParameterKey,p.ParameterValue]));
 if(parameters.size!==2 ||
   parameters.get('GitHubOidcProviderArn')!=='arn:aws:iam::458018461157:oidc-provider/token.actions.githubusercontent.com' ||
