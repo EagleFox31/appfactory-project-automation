@@ -16,4 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install strict YAML validator
+        run: python -m pip install --user PyYAML==6.0.2
+      - name: Reject duplicate CloudFormation keys and invalid TTL blueprint
+        run: python scripts/deployment/verify-aws-staging-yaml.py
       - run: npm test
