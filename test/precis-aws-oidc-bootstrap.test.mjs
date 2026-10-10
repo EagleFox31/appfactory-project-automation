@@ -24,6 +24,13 @@ test('isolated instance and cleanup permissions boundaries are explicit',()=>{
   assert.match(yml,/appfactory-staging-ssm-instance-boundary/);
   assert.match(yml,/appfactory-staging-ttl-scheduler-boundary/);
   assert.match(yml,/ssm:GetParameter/);
+  const boundary = yml.slice(yml.indexOf('Sid: SsmInstanceAgentCore'),
+    yml.indexOf('Sid: ReadOnlyOwnRuntimeSecret'));
+  assert.doesNotMatch(boundary,/ssm:GetParameters?/);
+  const exact = yml.slice(yml.indexOf('Sid: ReadOnlyOwnRuntimeSecret'),
+    yml.indexOf('StagingExpiryBoundary:'));
+  assert.match(exact,/ssm:GetParameters/);
+  assert.match(exact,/parameter\/precis-translation\/staging\/env/);
   assert.match(yml,/parameter\/precis-translation\/staging\/env/);
   assert.match(yml,/cloudformation:DeleteStack/);
   assert.doesNotMatch(yml,/ssm:PutParameter|ssm:DeleteParameter|kms:ScheduleKeyDeletion|iam:CreateUser|iam:CreateAccessKey/);
