@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const workflow=readFileSync(new URL('../.github/workflows/auto-aws-free-plan-preflight.yml',import.meta.url),'utf8');
 const script=readFileSync(new URL('../scripts/deployment/inspect-precis-staging-iam-stack.mjs',import.meta.url),'utf8');
 test('check trusted pinned consumer template and live AWS status',()=>{
-  assert.match(workflow,/ref: efa3f3492abca331453d9f814cc3e6269fbf6d79/);
+  assert.match(workflow,/ref: 18618e5ca8b76a3a6b62278e16e0c6fd2fd078fd/);
   assert.match(workflow,/inspect-precis-staging-iam-template\.mjs/);
   assert.match(workflow,/cloudformation validate-template/);
   assert.match(workflow,/inspect-precis-staging-iam-stack\.mjs/);
