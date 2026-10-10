@@ -1,5 +1,93 @@
 # Changelog
 
+## [1.5.0](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.4.0...v1.5.0) (2026-10-10)
+
+
+### Features
+
+* **aws:** 7-day disposable staging TTL and Free Plan cost guard ([#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([02c1820](https://github.com/EagleFox31/appfactory-project-automation/commit/02c1820e3abfc933352656de85a58823777461b7))
+* **aws:** aggregate real STS/IAM read-only evidence on GitHub runner ([1c7696f](https://github.com/EagleFox31/appfactory-project-automation/commit/1c7696f8c067f4b5f0baa9183dc75cefe2f191f5))
+* **aws:** block staging readiness unless Free Plan and credits verified ([01fbefe](https://github.com/EagleFox31/appfactory-project-automation/commit/01fbefe4197fccf7fd1d3d480ba8ae271ab32695))
+* **aws:** central least-privilege OIDC staging IAM provisioner and approved workflow ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([65ee3b5](https://github.com/EagleFox31/appfactory-project-automation/commit/65ee3b5f0b6982c467dd96592dc8f764e2b43462))
+* **aws:** evolve existing central IAM stack with Précis OIDC, CloudFormation, SSM boundaries ([e1e5b1f](https://github.com/EagleFox31/appfactory-project-automation/commit/e1e5b1f455eca9523af0696ff768c9ba6bfe6ee2))
+* **aws:** fail-closed automatic STS/Free Plan verification without resource writes ([54d002f](https://github.com/EagleFox31/appfactory-project-automation/commit/54d002f43141cfe5224ac77678bfd388c6c5909e))
+* **aws:** fail-closed read-only Free Plan and credits gate for staging ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([c71ac96](https://github.com/EagleFox31/appfactory-project-automation/commit/c71ac965a2c2b21590077486f11bf30a4c98b07f))
+* **aws:** generalize proven SSM/CloudFormation workflow to all tenant repos; gate secrets before EC2 spending ([fbae2b2](https://github.com/EagleFox31/appfactory-project-automation/commit/fbae2b2ccd4f253e5b5ef7fd1839703bff3d7a3d))
+* **aws:** narrow GitOps approval proof for only bounded Précis IAM reader ([7171e1e](https://github.com/EagleFox31/appfactory-project-automation/commit/7171e1e48339c4b47924b19252e9ba0e255cc253))
+* **aws:** one-command guarded CloudShell bootstrap with dry-run default ([cececa3](https://github.com/EagleFox31/appfactory-project-automation/commit/cececa38f88bab15e59de0d75c2ae3f22cfa6307))
+* **aws:** promote Atelier OIDC/CloudFormation/SSM Compose deployment into reusable AppFactory workflow ([a464930](https://github.com/EagleFox31/appfactory-project-automation/commit/a464930e713c1691e0c9fef6595b410493d0b961))
+* **aws:** read-only delegated staging provisioner capability audit ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([3ca1fd2](https://github.com/EagleFox31/appfactory-project-automation/commit/3ca1fd27ffbbab53de8f91b755d0c2eef94656f3))
+* **aws:** read-only live CloudFormation status of isolated Précis IAM stack ([8e233e4](https://github.com/EagleFox31/appfactory-project-automation/commit/8e233e45ab794ed3ca31fdc27e4ec948e266ba99))
+* **aws:** replace repeated console IAM setup with guarded one-time CloudShell bootstrap ([0e53af6](https://github.com/EagleFox31/appfactory-project-automation/commit/0e53af6761eca083348efe79a6e8c0c0d06dce75))
+* **aws:** reusable cost ceiling and Free Plan reserve gate for disposable staging ([e524674](https://github.com/EagleFox31/appfactory-project-automation/commit/e524674cb2b141f3aba81506a6cc756dee2854a8))
+* **aws:** reusable isolated EC2/SSM staging host CloudFormation blueprint (plan-only) ([c80b939](https://github.com/EagleFox31/appfactory-project-automation/commit/c80b939e0f837848add8b67391475f4c89287db2))
+* **aws:** reusable isolated Précis Compose staging host IaC blueprint (plan only, RAIDER [#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([222f824](https://github.com/EagleFox31/appfactory-project-automation/commit/222f8248e49f086e6e2f225bf64019dc674e8761))
+* **aws:** trigger approved Précis IAM-only IaC through GitHub, no console ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([2fb6c48](https://github.com/EagleFox31/appfactory-project-automation/commit/2fb6c488a528b57337977f19c786c63ea39e36db))
+* **aws:** validate separate delegated staging roles using readonly IAM simulation ([f48f62a](https://github.com/EagleFox31/appfactory-project-automation/commit/f48f62a4640138331ecd8e82fd29a7fda6180e6c))
+* **aws:** verify live STS and Free Tier read-only snapshots ([2cc1667](https://github.com/EagleFox31/appfactory-project-automation/commit/2cc166770a023e67a26bd0cc8711421d0a4d2488))
+* **ci:** publish CI-bound immutable GHCR digest manifest ([#82](https://github.com/EagleFox31/appfactory-project-automation/issues/82)) ([2d9c7c4](https://github.com/EagleFox31/appfactory-project-automation/commit/2d9c7c49bdb7826920fccf3614d9b8d21d8e4af5))
+* **ci:** validated reusable GHCR container build (phase 1) ([#78](https://github.com/EagleFox31/appfactory-project-automation/issues/78)) ([8c35170](https://github.com/EagleFox31/appfactory-project-automation/commit/8c3517020badf20d4c915c9c2d365cae1b4f45f7))
+* **ci:** verify GitHub-run provenance for immutable image release ([#83](https://github.com/EagleFox31/appfactory-project-automation/issues/83)) ([efa541a](https://github.com/EagleFox31/appfactory-project-automation/commit/efa541a361090397b3c4c1b1ddbd6dc3ccd29d0a))
+* **deploy:** enforce digest/backup/rollback rollout safety contract ([#84](https://github.com/EagleFox31/appfactory-project-automation/issues/84)) ([6934c6c](https://github.com/EagleFox31/appfactory-project-automation/commit/6934c6c50922ae5abfe4b090fb765275c512b640))
+* **project:** dogfood Projects automation ([#76](https://github.com/EagleFox31/appfactory-project-automation/issues/76)) ([00213bd](https://github.com/EagleFox31/appfactory-project-automation/commit/00213bd56e34c561e46845667f8063f394524ac4))
+* **RAIDER:** reuse Atelier AWS OIDC, CloudFormation and SSM Compose deployment for Précis ([#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([8bf7f4a](https://github.com/EagleFox31/appfactory-project-automation/commit/8bf7f4a5aa638259525ac226e5f4e44b92550c82))
+* **ssm:** bound per-instance Run Command polling without dispatch ([5c4b2ac](https://github.com/EagleFox31/appfactory-project-automation/commit/5c4b2acfae2bb6e6e33df89290c83e32f59d22bb))
+* **ssm:** bounded per-instance gateway polling ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([74d3cf1](https://github.com/EagleFox31/appfactory-project-automation/commit/74d3cf1dee8968f2adb6e349e0d61449f6d557cf))
+* **ssm:** fail-closed command receipt and invocation result checks ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([30703f5](https://github.com/EagleFox31/appfactory-project-automation/commit/30703f5eb3269a15cbd71d77510ec282f0629a74))
+* **ssm:** fail-closed invocation receipt and result validation ([33a2690](https://github.com/EagleFox31/appfactory-project-automation/commit/33a26905fdc28d6e234a371d8bec6cd333e56907))
+* **ssm:** host-local digest Compose rollback executor with backup proof ([#85](https://github.com/EagleFox31/appfactory-project-automation/issues/85)) ([6292402](https://github.com/EagleFox31/appfactory-project-automation/commit/6292402679f50f5c7e9c8c65e01efc4cb032de58))
+* **ssm:** read-only project-isolated AWS target preflight ([#81](https://github.com/EagleFox31/appfactory-project-automation/issues/81)) ([510856c](https://github.com/EagleFox31/appfactory-project-automation/commit/510856cc1c290ddf8fd03ec2437ce647c96affb4))
+* **ssm:** stage-gated send command orchestration ([d1a6521](https://github.com/EagleFox31/appfactory-project-automation/commit/d1a6521daeb666e8fa99f612263c75981e33d474))
+* **ssm:** staging-only gated dispatch coordinator ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([bb3a7d5](https://github.com/EagleFox31/appfactory-project-automation/commit/bb3a7d54c8f5f9141c0c82b13fec1fb44fb65169))
+* **ssm:** verified digest-only host payload plan ([#86](https://github.com/EagleFox31/appfactory-project-automation/issues/86)) ([866b369](https://github.com/EagleFox31/appfactory-project-automation/commit/866b3696ba77c3bcada1694b0845e9214e041f0b))
+* **visual-qa:** reusable rendered frontend gates ([#113](https://github.com/EagleFox31/appfactory-project-automation/issues/113)) ([151add8](https://github.com/EagleFox31/appfactory-project-automation/commit/151add8b850fb8a81f5ecceaa4fde1505fd9c1a2))
+
+
+### Bug Fixes
+
+* **aws:** bind Précis deploy role to existing central GitHub OIDC provider ([#131](https://github.com/EagleFox31/appfactory-project-automation/issues/131)) ([100d16e](https://github.com/EagleFox31/appfactory-project-automation/commit/100d16ebd0c8adcec1d52eeabb7383e30b9ec061))
+* **aws:** bind Précis IAM change-set guard to actual Stack.RoleARN ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([faa7d64](https://github.com/EagleFox31/appfactory-project-automation/commit/faa7d6417cadc7f2404df636cfbdb11a209e1fe1))
+* **aws:** export same-step changeset and safely resume exact reviewed pending IAM stack ([04b10d1](https://github.com/EagleFox31/appfactory-project-automation/commit/04b10d17f893b055a8a032dbd778e2b61da2e4ef))
+* **aws:** give staging host only its own exact SSM SecureString parameter read ([a784175](https://github.com/EagleFox31/appfactory-project-automation/commit/a784175c50906b9454366f2938c570cdc96ac4d7))
+* **aws:** pin repaired, CI-validated Précis IAM template for live validation ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([3a64355](https://github.com/EagleFox31/appfactory-project-automation/commit/3a643554129d1749af485a499b1308f4e8a887b2))
+* **aws:** pin the strictly validated Précis reader IAM template commit ([7c49e2a](https://github.com/EagleFox31/appfactory-project-automation/commit/7c49e2aba5b5c66364e3bbf77667356111658e68))
+* **aws:** plan only documented Free Tier eligible EC2 sizes and new bounded 7-day forecast ([446eb8e](https://github.com/EagleFox31/appfactory-project-automation/commit/446eb8ea9fc31e5c8f0e6d214e49313ac68ba42a))
+* **aws:** remove duplicated CloudFormation sections; restore valid mandatory TTL parameters ([c3d1df6](https://github.com/EagleFox31/appfactory-project-automation/commit/c3d1df601d56b2fd4b216fd98bf8357e063b558f))
+* **aws:** repair duplicated staging TTL IaC and add strict YAML CI gate ([#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([dfa2935](https://github.com/EagleFox31/appfactory-project-automation/commit/dfa2935d73b7df48a0c4800131f02b67fa3d7492))
+* **aws:** restrict staging EC2 to eligible Free Tier types; condition T3 credit setting ([46426f2](https://github.com/EagleFox31/appfactory-project-automation/commit/46426f2092a87576d6e961bebe396d62765b2a50))
+* **aws:** resume user-approved Précis IAM change set safely after partial workflow failure ([#75](https://github.com/EagleFox31/appfactory-project-automation/issues/75)) ([18f8a94](https://github.com/EagleFox31/appfactory-project-automation/commit/18f8a9417faf6a503bb4da2e8a4779c12e72695c))
+* **aws:** reuse existing central OIDC provider directly; eliminate missing standalone parameter ([5925f03](https://github.com/EagleFox31/appfactory-project-automation/commit/5925f03b6b9661d05fd0ecdb744e39a6a5704fb4))
+* **aws:** upgrade EXISTING AppFactory central IAM stack for Précis deployment ([#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([d5bebf0](https://github.com/EagleFox31/appfactory-project-automation/commit/d5bebf00a590325205e8b122ea0222dfcaa89304))
+* **aws:** verify real stack-bound CloudFormation service role when change-set field is null ([d32b6e5](https://github.com/EagleFox31/appfactory-project-automation/commit/d32b6e5ce53c07236fdfd1f84066b2e36f6bdb48))
+* **ci:** isolate read-only container plan from GHCR publishing ([#79](https://github.com/EagleFox31/appfactory-project-automation/issues/79)) ([fb04757](https://github.com/EagleFox31/appfactory-project-automation/commit/fb04757613e9514d2fd39147f5d4f7bae0dfd3d4))
+* **ci:** remove empty environment mapping from SHA-pinned workflow ([d9ca469](https://github.com/EagleFox31/appfactory-project-automation/commit/d9ca469771470763a5de5f886c80b442ace428b4))
+* **iam:** normalize CloudFormation ASCII policy and output identifiers ([b0ba1b5](https://github.com/EagleFox31/appfactory-project-automation/commit/b0ba1b57dc7e3f4d2dc2eace70b112704ffb6025))
+* **precis:** select x86 8-GiB AWS Free Tier eligible host for LibreOffice ([69e096b](https://github.com/EagleFox31/appfactory-project-automation/commit/69e096bc4b1771745cdda6cd43dfc65fb57afeb2))
+* **RAIDER:** select actual 2026 AWS Free Tier eligible EC2 instance for Précis ([b648f00](https://github.com/EagleFox31/appfactory-project-automation/commit/b648f004ded3fe563138b61003b93e8f13bb8899))
+* **ssm:** attest host Compose and backup hook Git contents ([#87](https://github.com/EagleFox31/appfactory-project-automation/issues/87)) ([b6dfea8](https://github.com/EagleFox31/appfactory-project-automation/commit/b6dfea872f6ef944d493325499d597f22cca668f))
+* **test:** model AWS invocation response using official field casing ([5d6779d](https://github.com/EagleFox31/appfactory-project-automation/commit/5d6779df1eed615d108388353f5290aab8f288d9))
+* **visual-qa:** actionable axe target and contrast diagnostics ([#125](https://github.com/EagleFox31/appfactory-project-automation/issues/125)) ([01baea2](https://github.com/EagleFox31/appfactory-project-automation/commit/01baea249aa271bab751a819aad255d9a101ad43))
+
+
+### Documentation
+
+* **aws:** align AppFactory auto preflight with Atelier's OIDC GitHub Actions pattern ([54e8290](https://github.com/EagleFox31/appfactory-project-automation/commit/54e829028c3fd6c7a3a2590034ea4fb4255915d8))
+* **aws:** dedicated OIDC readonly role and Free Plan no-spend conditions ([538a0b1](https://github.com/EagleFox31/appfactory-project-automation/commit/538a0b184fb71fe7c3c6d1ff8240042aa2296747))
+* **aws:** establish one-time trust boundary and reusable IaC bootstrap ([7306c3b](https://github.com/EagleFox31/appfactory-project-automation/commit/7306c3b6ff81e3eaccfdf6c47d0da1235d5bd1a3))
+* **aws:** exact once-only central IAM authorization and automated per-project apply flow ([3ca2fe8](https://github.com/EagleFox31/appfactory-project-automation/commit/3ca2fe88445350f703f1d5b095267e428f9b005d))
+* **aws:** one-owner-approval-to-GitOps IAM workflow, no extra console steps ([53aee15](https://github.com/EagleFox31/appfactory-project-automation/commit/53aee15e2b36d497779a2e51f100d6b7bfa5f3fd))
+* **aws:** read-only onboarding run no longer requests consumer SHA ([fffbf5a](https://github.com/EagleFox31/appfactory-project-automation/commit/fffbf5a764019e22b7c43cfa8d4734fdce62b0cd))
+* **ci:** report true 8-GiB Free Tier host size in automatic budget summary ([607334b](https://github.com/EagleFox31/appfactory-project-automation/commit/607334b009351888d17ecddcce592166a96f8fbe))
+* define reusable WOW Frontend capability ([#92](https://github.com/EagleFox31/appfactory-project-automation/issues/92)) ([52a91bc](https://github.com/EagleFox31/appfactory-project-automation/commit/52a91bcfa80c7e357ac367336fcbfd585f9c3807))
+* **RAIDER:** audited complete AWS Précis staging architecture, cost gates and Proof of Done ([bd4bfe2](https://github.com/EagleFox31/appfactory-project-automation/commit/bd4bfe2f3f8265417f4e1fcf2289c07d174be2f1))
+* **RAIDER:** capture malformed TTL YAML incident and mandatory strict PR parser ([4618f1e](https://github.com/EagleFox31/appfactory-project-automation/commit/4618f1e46a91de988656bbbdd92895e2f734c659))
+* **RAIDER:** map proven Atelier deployment into reusable AppFactory with exact blockers ([7f62aa9](https://github.com/EagleFox31/appfactory-project-automation/commit/7f62aa9b817a900fd6dad12b561326737d3f990b))
+* **RAIDER:** prevent malformed IaC YAML after AWS staging validation failure ([#120](https://github.com/EagleFox31/appfactory-project-automation/issues/120)) ([cfd4c40](https://github.com/EagleFox31/appfactory-project-automation/commit/cfd4c40e04818ab613c19d63b8a69b94d26200ec))
+* **RAIDER:** quantitative staging credit budget, time-to-live and public access constraints ([d98e2e9](https://github.com/EagleFox31/appfactory-project-automation/commit/d98e2e94ce6bfb92d0081de997c6949ce4b65dc1))
+* **RAIDER:** record CloudFormation partial-state and GITHUB_ENV same-step failure memory ([4acc370](https://github.com/EagleFox31/appfactory-project-automation/commit/4acc370a43243e524262f2a862542ccec46d7139))
+* **RAIDER:** record observed CloudFormation change-set null role and authoritative stack role ([ae3d15b](https://github.com/EagleFox31/appfactory-project-automation/commit/ae3d15bacc95ef25636029604e126c346bc16532))
+* **RAIDER:** switch Précis host sizing and credit forecast to Free Tier eligible m7i-flex.large ([4342e08](https://github.com/EagleFox31/appfactory-project-automation/commit/4342e084b8a4eb59a2c26584c69a5bc2501c291e))
+
 ## [1.4.0](https://github.com/EagleFox31/appfactory-project-automation/compare/v1.3.0...v1.4.0) (2026-10-04)
 
 
