@@ -50,7 +50,7 @@ These are **consumer-owned commands** executed without privileged credentials. T
 
 Consumer dependency installation is distinct from pinned **isolated test dependencies** (Playwright, axe-core Playwright and Lighthouse) in a temporary directory. Tests use a GitHub runner's headless Chromium; no browser is installed into the consumer's repository.
 
-One actual no-secret/browser smoke test is provided by `.github/workflows/visual-qa-self-test.yml` on changes to the runner/fixture: it launches `test/fixtures/visual-qa-site/server.mjs` and exercises the reusable workflow. The self-test uses **permissive fixture-specific** Lighthouse budgets to verify the measurement plumbing; real consumer thresholds remain conservative by default.
+One actual no-secret/browser smoke test is provided by `.github/workflows/visual-qa-self-test.yml` on changes to the runner/fixture: it launches `examples/visual-qa-fixture-server.mjs` and exercises the reusable workflow. The self-test uses **permissive fixture-specific** Lighthouse budgets to verify the measurement plumbing; real consumer thresholds remain conservative by default.
 
 ## Evidence and failure semantics
 
