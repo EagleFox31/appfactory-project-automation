@@ -50,6 +50,8 @@ These are **consumer-owned commands** executed without privileged credentials. T
 
 Consumer dependency installation is distinct from pinned **isolated test dependencies** (Playwright, axe-core Playwright and Lighthouse) in a temporary directory. Tests use a GitHub runner's headless Chromium; no browser is installed into the consumer's repository.
 
+The bundle report records runtime package dependencies and recursively measures local `dist`, `build` and `out` directories (without following symlinks); if none exist, it reports `NO_BUILD_DIRECTORY` rather than inventing a byte count. This is a size/dependency inventory, **not** a bundle regression threshold. A consumer-specific size budget can be added later.
+
 One actual no-secret/browser smoke test is provided by `.github/workflows/visual-qa-self-test.yml` on changes to the runner/fixture: it launches `examples/visual-qa-fixture-server.mjs` and exercises the reusable workflow. The self-test uses **permissive fixture-specific** Lighthouse budgets to verify the measurement plumbing; real consumer thresholds remain conservative by default.
 
 ## Evidence and failure semantics
@@ -68,7 +70,7 @@ Each mandatory route × viewport requires these outcomes:
 - no browser-console errors or unhandled page exceptions;
 - Lighthouse produces **real** LCP, CLS, TBT numbers within the consumer-configured limits.
 
-Screenshots, reduced-motion screenshots, raw Lighthouse JSON, `result.json` and `summary.md` are uploaded through `actions/upload-artifact@v4` **even if the QA runner fails**. The run's `GITHUB_STEP_SUMMARY` gets a gate table. Missing/invalid Lighthouse metrics and missing checks fail closed; a failed/skipped test is **never** converted to PASS.
+Screenshots, reduced-motion screenshots, raw Lighthouse JSON, `result.json`, `bundle-report.json` and `summary.md` are uploaded through `actions/upload-artifact@v4` **even if the QA runner fails**. The run's `GITHUB_STEP_SUMMARY` gets a gate table. Missing/invalid Lighthouse metrics and missing checks fail closed; a failed/skipped test is **never** converted to PASS.
 
 **Limitations requiring later review**: the reduced-motion check verifies the browser preference and functional CTA, not every third-party animation timeline; axe is a smoke test, not a full manual accessibility audit; simulated Lighthouse metrics are lab values, not field INP or Core Web Vitals; lazy media is scrolled into view up to a capped iteration count. Tests use the built local app, not a cloud production deployment. These limitations are surfaced rather than hidden.
 
