@@ -37,4 +37,17 @@ assert set(template["Resources"]) == {
 assert template["Resources"]["StagingInstance"]["Properties"]["CreditSpecification"] == ["IsBurstableT3", {"CPUCredits": "standard"}, "AWS::NoValue"]
 assert template["Resources"]["StagingExpirySchedule"]["Properties"]["ActionAfterCompletion"] == "DELETE"
 assert template["Resources"]["StagingInstance"]["Properties"]["BlockDeviceMappings"][0]["Ebs"]["Encrypted"] is True
+bootstrap = Path("infra/aws/blueprints/precis-staging-oidc-cfn-bootstrap.yml")
+iam = yaml.load(bootstrap.read_text(encoding="utf8"), Loader=UniqueLoader)
+assert set(iam) == {"AWSTemplateFormatVersion", "Description", "Parameters", "Resources", "Outputs"}
+assert set(iam["Resources"]) == {
+    "StagingInstanceBoundary", "StagingExpiryBoundary",
+    "PrecisStagingExecutionRole", "PrecisStagingGitHubRole"
+}
+assert iam["Resources"]["PrecisStagingGitHubRole"]["Properties"]["RoleName"] == (
+    "precis-translation-staging-github-deployer"
+)
+assert iam["Resources"]["PrecisStagingExecutionRole"]["Properties"]["RoleName"] == (
+    "precis-translation-staging-cfn-execution"
+)
 print("PASS: CloudFormation YAML parsed, unique mapping keys, bounded resources and mandatory TTL")
