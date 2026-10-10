@@ -115,7 +115,7 @@ async function renderRoute(route,index,viewport,config,baseURL){
       .filter(v=>v.impact==="serious"||v.impact==="critical")
       .map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length,help:v.help})).slice(0,30);
     gate(scope+":accessibility",violations.length===0,violations);
-    const capture=path.join(folder,scope+".png");
+    const capture=path.join(folder,safeName(scope)+".png");
     await page.screenshot({path:capture,fullPage:true,animations:"disabled"});
     gate(scope+":screenshot",fs.existsSync(capture)&&fs.statSync(capture).size>200,
       capture);
@@ -129,7 +129,7 @@ async function renderRoute(route,index,viewport,config,baseURL){
       gate(scope+":reduced-motion",!config.requireReducedMotion||(matches&&cta),
         {mediaQueryActive:matches,ctaVisible:cta,
           note:"Preference and functional CTA checked; individual animations require manual review"});
-      await reduced.screenshot({path:path.join(folder,scope+"-reduced-motion.png"),fullPage:true,animations:"disabled"});
+      await reduced.screenshot({path:path.join(folder,safeName(scope)+"-reduced-motion.png"),fullPage:true,animations:"disabled"});
     }finally{await reduced.close();}
     gate(scope+":console",problems.console.length===0&&problems.page.length===0,
       {console:problems.console,pageErrors:problems.page});
@@ -140,7 +140,7 @@ async function renderRoute(route,index,viewport,config,baseURL){
 
 function runLighthouse(route,index,viewport,config,baseURL){
   const scope="route"+index+":"+viewport.name;
-  const out=path.join(folder,scope+"-lighthouse.json");
+  const out=path.join(folder,safeName(scope)+"-lighthouse.json");
   const executable=path.join(path.dirname(new URL(import.meta.url).pathname),"node_modules/lighthouse/cli/index.js");
   const flags=[
     executable,routeURL(baseURL,route.path),"--quiet",
@@ -198,7 +198,13 @@ function emitFinal(){
   fs.writeFileSync(path.join(folder,"summary.md"),markdown);
   if(process.env.GITHUB_STEP_SUMMARY)
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,markdown+"\n");
-  if(!evidence.ok)process.exitCode=1;
+  if(!evidence.ok){
+    process.stderr.write("Visual QA failed gates: "+summary.errors.join(" | ")+"\n");
+    for(const [key,item] of Object.entries(results)) if(item.status==="FAIL")
+      process.stderr.write(key+" FAIL: "+JSON.stringify(item.detail).slice(0,1000)+"\n");
+    for(const note of evidence.notes) process.stderr.write(note+"\n");
+    process.exitCode=1;
+  }
 }
 try{
   fs.mkdirSync(folder,{recursive:true});
