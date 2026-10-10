@@ -48,7 +48,7 @@ hourly fee even when no ingress is allowed. Confirm network route, subnet,
 availability zone and actual region-specific pricing; no VPC ID, subnet ID
 or AMI ID is guessed.
 
-Host candidate: **x86_64 t3.medium, 40 GiB encrypted gp3** for LibreOffice
+Host candidate: **x86_64 m7i-flex.large (2 vCPU, 8 GiB RAM), 40 GiB encrypted gp3**, marked EC2 Free Tier eligible for accounts opened after 15 July 2025, for LibreOffice
 conversion, to be confirmed by load test and AWS Pricing/Cost Explorer.
 The configuration is **not** a cost commitment. The image is an explicitly
 reviewed, pinned Amazon Linux 2023 AMI. SSM instance profile requires a
@@ -58,18 +58,21 @@ merging the template.
 
 ## Financial and teardown design (2026-10-10)
 
-The currently reviewed EC2 instance class is `t3.medium` in Paris, with
-an indicative $0.0472 per hour Linux On-Demand rate (independent pricing
-cross-check: https://www.doit.com/compute/compute/aws/eu-west-3/t3.medium).
+The reviewed Free Tier eligible EC2 candidate is `m7i-flex.large` in Paris, with
+an indicative $0.1117 per hour Linux On-Demand rate (cross-check:
+https://aws-pricing.com/m7i-flex.large.html). Free Tier eligible does not mean
+unmetered free compute; new account Free Plan usage consumes AWS credits.
+AWS eligibility: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html.
 AWS charges $0.005 per public IPv4 address per hour
 (https://aws.amazon.com/vpc/pricing/). The 40-GiB gp3 planning allowance is
 **deliberately conservative at USD 0.14/GiB-month**, not an independently
-verified AWS list price. CPU burst mode is explicitly `standard` to prevent
-surplus T3 Unlimited CPU credit billing.
+verified AWS list price. CPU burst mode is explicitly `standard` **only for T3**, via CloudFormation
+condition; the selected M7i-Flex instance does not support the T3 CPUCredits
+attribute.
 
 `src/deployment/aws-staging-budget-gate.mjs` estimates one 7-day instance
 with USD 3 contingency for network/log/snapshot variable usage plus a
-25% cushion, and hard-fails above USD 18 or if the AWS Free Plan would have
+25% cushion, and hard-fails above USD 35 or if the AWS Free Plan would have
 less than USD 75 remaining afterward. It inspects real AWS credit balance
 through the existing OIDC read-only workflow. These are **policy ceilings, not
 AWS billing guarantees**; accurate current pricing, supported credit services,
