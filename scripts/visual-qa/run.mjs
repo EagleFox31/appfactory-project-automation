@@ -69,8 +69,9 @@ const passPage=async (page,route,scope)=>{
 
 async function renderRoute(route,index,viewport,config,baseURL){
   const scope="route"+index+":"+viewport.name;
-  const page=await browser.newPage({viewport:{width:viewport.width,height:viewport.height},
+  const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},
     reducedMotion:"no-preference",deviceScaleFactor:1});
+  const page=await context.newPage();
   const problems={console:[],page:[],http:[],images:[]};
   page.on("console",m=>{if(m.type()==="error") problems.console.push(m.text().slice(0,300));});
   page.on("pageerror",e=>problems.page.push(String(e).slice(0,400)));
@@ -110,18 +111,19 @@ async function renderRoute(route,index,viewport,config,baseURL){
     gate(scope+":external-images",!config.requireNoExternalImages||problems.images.length===0,
       [...new Set(problems.images)].slice(0,25));
     await passPage(page,route,scope);
+    const capture=path.join(folder,safeName(scope)+".png");
+    await page.screenshot({path:capture,fullPage:true,animations:"disabled"});
+    gate(scope+":screenshot",fs.existsSync(capture)&&fs.statSync(capture).size>200,
+      capture);
     const axe=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze();
     const violations=axe.violations
       .filter(v=>v.impact==="serious"||v.impact==="critical")
       .map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length,help:v.help})).slice(0,30);
     gate(scope+":accessibility",violations.length===0,violations);
-    const capture=path.join(folder,safeName(scope)+".png");
-    await page.screenshot({path:capture,fullPage:true,animations:"disabled"});
-    gate(scope+":screenshot",fs.existsSync(capture)&&fs.statSync(capture).size>200,
-      capture);
     // Reduced-motion must render content and permit CTA operation without animations.
-    const reduced=await browser.newPage({viewport:{width:viewport.width,height:viewport.height},
+    const reducedContext=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},
       reducedMotion:"reduce",deviceScaleFactor:1});
+    const reduced=await reducedContext.newPage();
     try{
       await reduced.goto(routeURL(baseURL,route.path),{waitUntil:"domcontentloaded",timeout:30000});
       const matches=await reduced.evaluate(()=>matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -130,12 +132,12 @@ async function renderRoute(route,index,viewport,config,baseURL){
         {mediaQueryActive:matches,ctaVisible:cta,
           note:"Preference and functional CTA checked; individual animations require manual review"});
       await reduced.screenshot({path:path.join(folder,safeName(scope)+"-reduced-motion.png"),fullPage:true,animations:"disabled"});
-    }finally{await reduced.close();}
+    }finally{await reducedContext.close();}
     gate(scope+":console",problems.console.length===0&&problems.page.length===0,
       {console:problems.console,pageErrors:problems.page});
   }catch(error){
     gate(scope+":render",false,String(error?.stack??error).slice(0,3000));
-  }finally{await page.close();}
+  }finally{await context.close();}
 }
 
 function runLighthouse(route,index,viewport,config,baseURL){
