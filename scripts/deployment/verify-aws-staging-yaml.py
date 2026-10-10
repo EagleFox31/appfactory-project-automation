@@ -50,4 +50,22 @@ assert iam["Resources"]["PrecisStagingGitHubRole"]["Properties"]["RoleName"] == 
 assert iam["Resources"]["PrecisStagingExecutionRole"]["Properties"]["RoleName"] == (
     "precis-translation-staging-cfn-execution"
 )
+central_path = Path("infra/aws/appfactory-central-staging-iam-bootstrap.yml")
+central = yaml.load(central_path.read_text(encoding="utf8"), Loader=UniqueLoader)
+assert set(central) == {"AWSTemplateFormatVersion", "Description", "Resources", "Outputs"}
+assert set(central["Resources"]) == {
+    "StagingReaderBoundary", "StagingIamCloudFormationRole",
+    "AppFactoryStagingIamDeployerRole",
+    "StagingInstanceBoundary", "StagingExpiryBoundary",
+    "PrecisStagingExecutionRole", "PrecisStagingGitHubRole"
+}, "unexpected or missing IAM resource on central stack"
+assert all(
+    resource["Type"] in {"AWS::IAM::ManagedPolicy", "AWS::IAM::Role"}
+    for resource in central["Resources"].values()
+), "central update must stay IAM-only, with no EC2"
+assert central["Resources"]["PrecisStagingGitHubRole"] == iam["Resources"]["PrecisStagingGitHubRole"]
+assert central["Resources"]["PrecisStagingExecutionRole"] == iam["Resources"]["PrecisStagingExecutionRole"]
+assert central["Resources"]["StagingInstanceBoundary"] == iam["Resources"]["StagingInstanceBoundary"]
+assert central["Resources"]["StagingExpiryBoundary"] == iam["Resources"]["StagingExpiryBoundary"]
+print("PASS: existing central bootstrap preserves 3 IAM resources and adds exactly 4 reviewed staging IAM resources")
 print("PASS: CloudFormation YAML parsed, unique mapping keys, bounded resources and mandatory TTL")

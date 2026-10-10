@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  One-time AppFactory platform trust for tightly scoped IAM-only Précis staging onboarding.
-  No EC2, network, storage, SSM command or production resource.
+  AppFactory existing central bootstrap extended for Précis staged deployment IAM.
+  IAM roles, boundaries and GitHub OIDC only. No EC2, server or production changes.
 Resources:
   StagingReaderBoundary:
     Type: AWS::IAM::ManagedPolicy
@@ -105,6 +105,237 @@ Resources:
                 Condition:
                   StringEquals:
                     'iam:PassedToService': cloudformation.amazonaws.com
+
+  StagingInstanceBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: appfactory-staging-ssm-instance-boundary
+      Description: Only SSM agent communication plus Précis dedicated secret lookup
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SsmInstanceAgentCore
+            Effect: Allow
+            Action:
+              - ssm:DescribeAssociation
+              - ssm:DescribeDocument
+              - ssm:GetDeployablePatchSnapshotForInstance
+              - ssm:GetDocument
+              - ssm:GetManifest
+              - ssm:ListAssociations
+              - ssm:ListInstanceAssociations
+              - ssm:PutComplianceItems
+              - ssm:PutConfigurePackageResult
+              - ssm:PutInventory
+              - ssm:UpdateAssociationStatus
+              - ssm:UpdateInstanceAssociationStatus
+              - ssm:UpdateInstanceInformation
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+              - ec2messages:AcknowledgeMessage
+              - ec2messages:DeleteMessage
+              - ec2messages:FailMessage
+              - ec2messages:GetEndpoint
+              - ec2messages:GetMessages
+              - ec2messages:SendReply
+            Resource: '*'
+          - Sid: ReadOnlyOwnRuntimeSecret
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: !Sub 'arn:${AWS::Partition}:ssm:eu-west-3:${AWS::AccountId}:parameter/precis-translation/staging/env'
+
+  StagingExpiryBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: appfactory-staging-ttl-scheduler-boundary
+      Description: Scheduler may delete the one approved Précis staging CFN stack only
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: cloudformation:DeleteStack
+            Resource: !Sub 'arn:${AWS::Partition}:cloudformation:eu-west-3:${AWS::AccountId}:stack/precis-translation-staging-app/*'
+
+  PrecisStagingExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: precis-translation-staging-cfn-execution
+      Description: Project-isolated CloudFormation execution for staging EC2/SSM only
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PrecisStagingComputeAndScheduler
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ObserveNetworkAndCompute
+                Effect: Allow
+                Action:
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeInstanceAttribute
+                  - ec2:DescribeNetworkInterfaces
+                Resource: '*'
+              - Sid: ManageInstanceAndSecurityGroupInParisOnly
+                Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:CreateVolume
+                  - ec2:DeleteVolume
+                  - ec2:AttachVolume
+                  - ec2:DetachVolume
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': eu-west-3
+              - Sid: ManageExactExpiringStagingSchedule
+                Effect: Allow
+                Action:
+                  - scheduler:CreateSchedule
+                  - scheduler:UpdateSchedule
+                  - scheduler:GetSchedule
+                  - scheduler:DeleteSchedule
+                Resource: !Sub 'arn:${AWS::Partition}:scheduler:eu-west-3:${AWS::AccountId}:schedule/default/precis-translation-staging-ttl'
+        - PolicyName: PrecisStagingScopedIamRoles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ManageOnlyPrecisStagingHostRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PassRole
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/precis-translation-staging-ssm'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/precis-translation-staging-ttl-scheduler'
+              - Sid: ManageOnlyStagingInstanceProfile
+                Effect: Allow
+                Action:
+                  - iam:CreateInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/precis-translation-staging-ssm-profile'
+      Tags:
+        - Key: AppFactoryProject
+          Value: precis-translation
+        - Key: AppFactoryEnvironment
+          Value: staging
+
+  PrecisStagingGitHubRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: precis-translation-staging-github-deployer
+      Description: GitHub OIDC for exactly Précis staging; no Atelier prod access
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': 'repo:EagleFox31@86088743/Pr-cis-Translation@1411758415:environment:staging'
+      Policies:
+        - PolicyName: ExactStagingCfnAndSsm
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ManageOnlyPrecisStagingStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:ListStackResources
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:eu-west-3:${AWS::AccountId}:stack/precis-translation-staging-app/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:eu-west-3:${AWS::AccountId}:changeSet/awscli-cloudformation-*/*'
+              - Sid: ReadAccountAndIaCTemplates
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                  - freetier:GetAccountPlanState
+                  - cloudformation:ValidateTemplate
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeInstances
+                  - ssm:DescribeInstanceInformation
+                  - ssm:GetCommandInvocation
+                Resource: '*'
+              - Sid: ReadOwnStagingRuntimeConfig
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:eu-west-3:${AWS::AccountId}:parameter/precis-translation/staging/env'
+              - Sid: ReadPublicAmazonLinuxAmi
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: 'arn:aws:ssm:eu-west-3::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64'
+              - Sid: PassOnlyDedicatedCFNRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt PrecisStagingExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': cloudformation.amazonaws.com
+              - Sid: SendApprovedSSMDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: 'arn:aws:ssm:eu-west-3::document/AWS-RunShellScript'
+              - Sid: SendOnlyTaggedStagingInstance
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:eu-west-3:${AWS::AccountId}:instance/*'
+                Condition:
+                  StringEquals:
+                    'ssm:resourceTag/AppFactoryProject': precis-translation
+                    'ssm:resourceTag/AppFactoryEnvironment': staging
+      Tags:
+        - Key: AppFactoryProject
+          Value: precis-translation
+        - Key: AppFactoryEnvironment
+          Value: staging
+
 Outputs:
   DeployerRoleArn:
     Description: Non-secret GitHub OIDC role for reviewed IAM-only staging onboarding
@@ -115,3 +346,11 @@ Outputs:
   StagingReaderBoundaryArn:
     Description: Strict Free Tier reader permissions boundary
     Value: !Ref StagingReaderBoundary
+  PrecisStagingGitHubRoleArn:
+    Value: !GetAtt PrecisStagingGitHubRole.Arn
+  PrecisStagingCloudFormationRoleArn:
+    Value: !GetAtt PrecisStagingExecutionRole.Arn
+  StagingInstanceBoundaryArn:
+    Value: !Ref StagingInstanceBoundary
+  StagingExpiryBoundaryArn:
+    Value: !Ref StagingExpiryBoundary
