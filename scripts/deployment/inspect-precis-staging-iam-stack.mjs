@@ -40,20 +40,31 @@ if(result.status!==0) {
   if(!Array.isArray(entries)||entries.length!==1 || entries[0].StackName!==stack)
     fail('CloudFormation returned an unexpected stack');
   const current=entries[0];
-  if(current.StackStatus!=='CREATE_COMPLETE')
-    fail('unexpected tenant stack status: '+String(current.StackStatus));
-  const expected='arn:aws:iam::458018461157:role/precis-translation-staging-free-plan-read';
-  const outputs=current.Outputs||[];
-  const reader=outputs.find(x=>x.OutputKey==='ReadOnlyRoleArn');
-  if(reader?.OutputValue!==expected)
-    fail('tenant role ARN output does not match the approved resource');
-  summary=[
-    '### Précis staging IAM — provisioned',
-    '- CloudFormation stack `precis-staging-iam-readonly`: CREATE_COMPLETE.',
-    '- Read-only tenant role ARN matches the dedicated account and resource.',
-    '- **No AWS resource was created or modified by this status check.**',
-    ''
-  ].join('\n');
+  if(current.StackStatus==='REVIEW_IN_PROGRESS') {
+    summary=[
+      '### Précis staging IAM — pending approved change-set execution',
+      '- Tenant CloudFormation stack `precis-staging-iam-readonly`: REVIEW_IN_PROGRESS.',
+      '- The IAM role is not yet provisioned.',
+      '- Recovery must verify the exact prepared change set before execution.',
+      '- **No AWS resource was created or modified by this status check.**',
+      ''
+    ].join('\n');
+  } else {
+    if(current.StackStatus!=='CREATE_COMPLETE')
+      fail('unexpected tenant stack status: '+String(current.StackStatus));
+    const expected='arn:aws:iam::458018461157:role/precis-translation-staging-free-plan-read';
+    const outputs=current.Outputs||[];
+    const reader=outputs.find(x=>x.OutputKey==='ReadOnlyRoleArn');
+    if(reader?.OutputValue!==expected)
+      fail('tenant role ARN output does not match the approved resource');
+    summary=[
+      '### Précis staging IAM — provisioned',
+      '- CloudFormation stack `precis-staging-iam-readonly`: CREATE_COMPLETE.',
+      '- Read-only tenant role ARN matches the dedicated account and resource.',
+      '- **No AWS resource was created or modified by this status check.**',
+      ''
+    ].join('\n');
+  }
 }
 console.log(summary);
 if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,summary);
