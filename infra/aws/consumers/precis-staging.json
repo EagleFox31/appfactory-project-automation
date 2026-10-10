@@ -12,7 +12,7 @@
   "host": {
     "architecture": "x86_64",
     "operatingSystem": "amazon-linux-2023",
-    "instanceType": "t3.medium",
+    "instanceType": "m7i-flex.large",
     "rootVolumeGiB": 40,
     "inboundTcpPorts": [],
     "outboundTcpPorts": [
