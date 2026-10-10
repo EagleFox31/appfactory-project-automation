@@ -6,6 +6,8 @@ on:
     paths:
       - infra/aws/blueprints/reusable-compose-staging-host.yml
       - infra/aws/consumers/precis-staging.json
+      - src/deployment/aws-staging-budget-gate.mjs
+      - scripts/deployment/print-aws-staging-budget-plan.mjs
       - .github/workflows/auto-aws-compose-blueprint-validation.yml
   workflow_dispatch:
 
@@ -44,6 +46,15 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 458018461157 ]] || exit 1
+      - name: Verify AWS Free Plan and publish bounded staging budget estimate (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/appfactory-ec2-plan-sts.json" "$RUNNER_TEMP/appfactory-ec2-plan-credits.json"' EXIT
+          aws sts get-caller-identity --output json > "$RUNNER_TEMP/appfactory-ec2-plan-sts.json"
+          aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/appfactory-ec2-plan-credits.json"
+          node scripts/deployment/print-aws-staging-budget-plan.mjs
       - name: Validate reusable staging host CloudFormation template against real AWS
         shell: bash
         run: |
@@ -57,7 +68,7 @@ jobs:
             echo '- Only template validation and account identity query were executed.'
             echo '- Précis manifest remains PLAN_ONLY with no authorized paid resources.'
             echo '- No server, network, instance profile or IAM permissions were created.'
-            echo '- Next gates: pricing, dedicated provisioner approval, TTL and backup.'
+            echo '- Next gates: AWS credit eligibility, dedicated provisioner approval and backups.'
           } >> "$GITHUB_STEP_SUMMARY"
 # This workflow must remain read-only. Neither GitHub nor AWS has permission
 # to provision EC2/SSM with the currently delegated central reader role.
