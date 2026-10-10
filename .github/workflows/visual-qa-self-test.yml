@@ -1,0 +1,32 @@
+name: Visual QA self-test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/reusable-visual-qa.yml"
+      - ".github/workflows/visual-qa-self-test.yml"
+      - "scripts/visual-qa/**"
+      - "test/fixtures/visual-qa-site/**"
+      - "test/visual-qa-contract.test.mjs"
+  workflow_dispatch:
+
+concurrency:
+  group: visual-qa-self-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-live-browser:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-visual-qa.yml
+    with:
+      appfactory_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      config_path: test/fixtures/visual-qa-site/config.json
+      install_command: ":"
+      build_command: ":"
+      start_command: node examples/visual-qa-fixture-server.mjs
+      server_url: http://127.0.0.1:4173/

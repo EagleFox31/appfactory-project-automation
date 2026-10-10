@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AppFactory Visual QA test fixture</title>
+  <style>
+    :root{font-family:system-ui,sans-serif;color:#152335;background:#fff}
+    *,*::before,*::after{box-sizing:border-box}
+    body{margin:0}
+    header,main,footer{max-width:960px;margin:0 auto;padding:20px}
+    .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));align-items:center;gap:32px;min-height:500px}
+    h1{font-size:clamp(2rem,5vw,4rem);line-height:1.1}
+    p{line-height:1.65}
+    .cta{display:inline-block;padding:14px 22px;background:#1045a5;color:white;border-radius:8px;text-decoration:none;font-weight:700}
+    .cta:focus-visible{outline:4px solid #cf4e00;outline-offset:4px}
+    .showcase{background:#ecf3ff;border:1px solid #bbcde8;border-radius:18px;padding:30px}
+    .surface{height:160px;border-radius:12px;background:linear-gradient(130deg,#e7eefa,#c3d5f2)}
+    @media(prefers-reduced-motion:no-preference){.showcase{transition:transform .18s ease}.showcase:hover{transform:translateY(-3px)}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
+  </style>
+</head>
+<body>
+  <header><strong>AppFactory QA fixture</strong></header>
+  <main>
+    <section class="hero">
+      <div><h1>Build a storefront that actually works.</h1>
+      <p>This static fixture confirms that screenshots, keyboard focus, accessibility checks and reduced motion are executed in a real browser.</p>
+      <a id="primary-cta" class="cta" href="/app">Start here</a></div>
+      <div class="showcase" aria-label="Example storefront presentation"><div class="surface" role="img" aria-label="Decorative storefront preview"></div><p>Simple and readable on mobile.</p></div>
+    </section>
+  </main>
+  <footer><p>Trigenys — Visual QA reusable workflow fixture.</p></footer>
+</body>
+</html>

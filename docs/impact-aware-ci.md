@@ -126,3 +126,7 @@ The first consumer should be validated against a real repository before the capa
 - manual full validation remains possible;
 - the impact engine is deterministic and zero-dependency;
 - existing consumer build/test/deploy logic remains owned by the consumer or its reusable workflow.
+
+## Rendered frontend QA integration
+
+A consumer can add `visual-qa` to the frontend surface's gate list and call `reusable-visual-qa.yml` only when the existing impact-analysis output includes that gate. This is **selective execution**, not a second path-analysis engine. See [the Visual QA runbook](reusable-visual-qa.md), [impact configuration](../examples/visual-qa-impact.json) and [caller workflow](../examples/visual-qa-impact-aware-ci.yml). This unprivileged job renders local desktop/mobile screenshots and checks axe, keyboard, reduced motion, media errors and Lighthouse budgets without deploying a product.

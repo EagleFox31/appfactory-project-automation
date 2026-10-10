@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "fallback": "all",
+  "ignorePaths": [
+    "README.md",
+    "docs/**"
+  ],
+  "surfaces": {
+    "frontend": {
+      "paths": [
+        "src/**",
+        "public/**",
+        "index.html",
+        "package.json",
+        "package-lock.json",
+        "vite.config.*",
+        "tsconfig*.json",
+        "test/ui/**",
+        ".github/appfactory-visual-qa.json"
+      ],
+      "gates": [
+        "frontend-unit",
+        "visual-qa"
+      ]
+    },
+    "backend": {
+      "paths": [
+        "api/**",
+        "workers/**",
+        "database/**"
+      ],
+      "gates": [
+        "backend-unit"
+      ]
+    }
+  }
+}

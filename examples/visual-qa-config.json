@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "path": "/",
+      "primaryCtaSelector": "a[href='/app']",
+      "expectedCtaHref": "/app"
+    }
+  ],
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "budgets": {
+    "maxLcpMs": 2500,
+    "maxCls": 0.1,
+    "maxTotalBlockingTimeMs": 200
+  },
+  "requireReducedMotion": true,
+  "requireNoHorizontalOverflow": true,
+  "requireNoExternalImages": true
+}
