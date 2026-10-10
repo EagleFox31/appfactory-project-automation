@@ -6,6 +6,7 @@ on:
     paths:
       - infra/aws/blueprints/reusable-compose-staging-host.yml
       - infra/aws/blueprints/precis-staging-oidc-cfn-bootstrap.yml
+      - infra/aws/appfactory-central-staging-iam-bootstrap.yml
       - infra/aws/consumers/precis-staging.json
       - src/deployment/aws-staging-budget-gate.mjs
       - scripts/deployment/print-aws-staging-budget-plan.mjs
@@ -56,6 +57,15 @@ jobs:
           aws sts get-caller-identity --output json > "$RUNNER_TEMP/appfactory-ec2-plan-sts.json"
           aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/appfactory-ec2-plan-credits.json"
           node scripts/deployment/print-aws-staging-budget-plan.mjs
+      - name: Validate in-place upgrade of EXISTING AppFactory central bootstrap on AWS (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template \
+            --region eu-west-3 \
+            --template-body file://infra/aws/appfactory-central-staging-iam-bootstrap.yml \
+            --query '{Description:Description,Capabilities:Capabilities}' --output json
+          echo '- Existing central IAM stack update template syntax passed; no update applied.' >> "$GITHUB_STEP_SUMMARY"
       - name: Validate dedicated Précis AWS OIDC/CFN bootstrap with AWS (read only)
         shell: bash
         run: |
