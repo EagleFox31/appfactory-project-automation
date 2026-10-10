@@ -6,6 +6,58 @@ Before related work, search this file for known failure modes. If a documented f
 
 ## Lessons
 
+### LESSON-2026-014 — GitHub GITHUB_ENV is not available in the same step
+
+- **Date:** 2026-10-10
+- **Category:** CI/CD / AWS IaC orchestration / idempotence
+- **Status:** prevention-added
+- **Related:** issue #75, Précis IAM approval PR #112 and failed AWS run #38008163231
+
+**Context**
+
+The first user-approved, GitOps-triggered IAM-only Précis staging workflow
+successfully authenticated using the central OIDC role and created a valid
+CloudFormation CREATE change set, then rejected it before execution.
+
+**Failure / near miss**
+
+The workflow set `CHANGESET=...` in `$GITHUB_ENV` and immediately called its
+Node validator in the **same step**. The validator refused to run because
+`process.env.CHANGESET` was missing. This left the tenant CloudFormation
+stack in `REVIEW_IN_PROGRESS` with an unexecuted change set.
+
+**Root cause**
+
+GitHub Actions exposes `$GITHUB_ENV` changes only to **subsequent steps**.
+The shell process must also `export CHANGESET=...` for any child process
+spawned in the current step. Treating these two channels as interchangeable
+created a partial-state failure.
+
+**Resolution**
+
+Export the value for the current step, separately publish it to
+`$GITHUB_ENV`, detect the pending exact previously approved change set on
+a retry, and validate that its account, IAM service role, permissions
+boundary, named IAM capability and **single read-only role ADD** match the
+approved template before executing. Never blindly recreate or overwrite
+an existing CloudFormation stack.
+
+**Prevention**
+
+Add explicit validator contract tests for both current-run and approved
+resume-run execution, wrong account, wrong role, missing boundary and unexpected
+stack transitions. Extend workflow tests to assert both `export CHANGESET`
+and `echo ... >> "$GITHUB_ENV"`. Full AWS read/write proof remains required:
+green unit tests alone are not a proof of actual provisioning.
+
+**Generalized RAIDER lesson**
+
+Idempotence must cover intermediate IaC states (including
+`REVIEW_IN_PROGRESS`), and GitHub Actions' same-step/next-step environment
+interfaces must be tested separately. Record and reconcile partial
+CloudFormation state, rather than consuming another user authorization or
+opening a competing stack.
+
 ### LESSON-2026-001 — A canonical normalizer must accept its own output
 
 - **Date:** 2026-09-16
