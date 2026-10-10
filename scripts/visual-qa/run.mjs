@@ -118,7 +118,13 @@ async function renderRoute(route,index,viewport,config,baseURL){
     const axe=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze();
     const violations=axe.violations
       .filter(v=>v.impact==="serious"||v.impact==="critical")
-      .map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length,help:v.help})).slice(0,30);
+       .map(v=>({
+        id:v.id, impact:v.impact, nodes:v.nodes.length, help:v.help,
+        targets:v.nodes.slice(0,30).map(n=>({
+          target:n.target.slice(0,3),
+          summary:(n.failureSummary||"").slice(0,700)
+        }))
+      })).slice(0,30);
     gate(scope+":accessibility",violations.length===0,violations);
     // Reduced-motion must render content and permit CTA operation without animations.
     const reducedContext=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},
