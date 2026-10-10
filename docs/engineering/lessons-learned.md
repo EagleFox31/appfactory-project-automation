@@ -50,6 +50,19 @@ stack transitions. Extend workflow tests to assert both `export CHANGESET`
 and `echo ... >> "$GITHUB_ENV"`. Full AWS read/write proof remains required:
 green unit tests alone are not a proof of actual provisioning.
 
+**Follow-up real AWS evidence, 2026-10-10**
+
+AWS `DescribeChangeSet.RoleARN` was actually `null` for the approved
+CREATE change set even though the original GitHub step specified
+`create-change-set --role-arn`. The authoritative pending
+`DescribeStacks.RoleARN` was the exact approved
+`appfactory-staging-iam-cfn-execution` role. A strict guard that checked only
+the optional change-set field correctly blocked the run but created an
+unnecessary reapproval cycle. The validator must read and require the actual
+stack-bound service role; a non-null conflicting change-set role is also
+rejected. Tests cover this real platform nullability and keep the
+check fail-closed.
+
 **Generalized RAIDER lesson**
 
 Idempotence must cover intermediate IaC states (including
