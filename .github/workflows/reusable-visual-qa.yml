@@ -1,0 +1,151 @@
+name: AppFactory reusable Visual QA
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        description: Immutable commit SHA containing the trusted reusable QA runner.
+        required: true
+        type: string
+      config_path:
+        description: Consumer-controlled strict Visual QA config.
+        required: false
+        type: string
+        default: .github/appfactory-visual-qa.json
+      checkout_ref:
+        description: Optional immutable consumer revision to verify.
+        required: false
+        type: string
+        default: ""
+      install_command:
+        description: Consumer dependency install, executed without secrets.
+        required: false
+        type: string
+        default: npm ci --no-audit --no-fund
+      build_command:
+        description: Consumer build command. Must not deploy.
+        required: false
+        type: string
+        default: npm run build
+      start_command:
+        description: Consumer preview HTTP server bound to 127.0.0.1 and port 4173.
+        required: false
+        type: string
+        default: npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
+      server_url:
+        description: Must be localhost on an unprivileged TCP port.
+        required: false
+        type: string
+        default: http://127.0.0.1:4173/
+      node_version:
+        required: false
+        type: string
+        default: "24"
+
+permissions:
+  contents: read
+
+jobs:
+  visual-qa:
+    name: Browser, accessibility and Lighthouse gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VISUAL_QA_BASE_URL: ${{ inputs.server_url }}
+      VISUAL_QA_CONFIG: ${{ github.workspace }}/${{ inputs.config_path }}
+      VISUAL_QA_ARTIFACT_DIR: ${{ github.workspace }}/visual-qa-artifacts
+      START_COMMAND: ${{ inputs.start_command }}
+      INSTALL_COMMAND: ${{ inputs.install_command }}
+      BUILD_COMMAND: ${{ inputs.build_command }}
+    steps:
+      - name: Checkout consumer (unprivileged)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Checkout reviewed Visual QA runtime
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory-visual
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Validate configuration and unprivileged target
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { assertVisualConfig, parseLocalBaseURL } from "./.appfactory-visual/scripts/visual-qa/contract.mjs";
+            assertVisualConfig(JSON.parse(readFileSync(process.env.VISUAL_QA_CONFIG,"utf8")));
+            parseLocalBaseURL(process.env.VISUAL_QA_BASE_URL);
+          '
+
+      - name: Install and build consumer (no deployment)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$INSTALL_COMMAND"
+          bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - name: Start local preview server
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -euo pipefail -c "$START_COMMAND" > "$RUNNER_TEMP/appfactory-preview.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/appfactory-preview.pid"
+          for attempt in $(seq 1 60); do
+            if curl -fsS --max-time 2 "$VISUAL_QA_BASE_URL" > /dev/null; then
+              echo "Local preview is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Local preview did not become ready"
+          cat "$RUNNER_TEMP/appfactory-preview.log"
+          exit 1
+
+      - name: Install pinned isolated browser auditing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$RUNNER_TEMP/appfactory-visual-runtime"
+          mkdir -p "$runtime"
+          cp .appfactory-visual/scripts/visual-qa/{contract,run}.mjs "$runtime/"
+          npm install --prefix "$runtime" --no-save --ignore-scripts --no-audit --no-fund \
+            playwright@1.56.1 @axe-core/playwright@4.11.0 lighthouse@12.8.2
+          "$runtime/node_modules/.bin/playwright" install --with-deps chromium
+          echo "VISUAL_QA_RUNTIME=$runtime" >> "$GITHUB_ENV"
+
+      - name: Execute browser, axe and Lighthouse gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "$VISUAL_QA_RUNTIME/run.mjs"
+
+      - name: Upload screenshots and raw gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appfactory-visual-qa
+          path: |
+            visual-qa-artifacts/
+            ${{ runner.temp }}/appfactory-preview.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Shut down local preview
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/appfactory-preview.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/appfactory-preview.pid")" || true
+          fi
