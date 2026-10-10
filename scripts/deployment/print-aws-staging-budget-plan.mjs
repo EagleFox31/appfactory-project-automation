@@ -24,7 +24,7 @@ const lines=[
   '### RAIDER — Précis disposable staging cost plan (NOT deployment)',
   '- Account: 4580******** — Free Plan ACTIVE, read directly from AWS.',
   '- Estimate duration: '+estimate.lifetimeHours.toFixed(1)+' hours, deadline '+expiresAt+'.',
-  '- Selected 2vCPU/4GiB host: '+estimate.instanceType+', 40 GiB gp3 encrypted.',
+  '- Selected 2vCPU/8GiB Free Tier eligible instance type (AWS account availability must still be checked): '+estimate.instanceType+', 40 GiB gp3 encrypted.',
   '- Compute list-price projection: $'+estimate.computeUsd.toFixed(2)+'.',
   '- IPv4 list-price projection: $'+estimate.ipv4Usd.toFixed(2)+'.',
   '- Conservative gp3 provisioning projection: $'+estimate.storageUsd.toFixed(2)+'.',

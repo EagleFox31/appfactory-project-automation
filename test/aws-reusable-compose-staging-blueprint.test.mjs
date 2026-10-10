@@ -8,6 +8,8 @@ test('reusable host IaC avoids per-project or production hardcoded resource name
   assert.match(template,/Environment:/);
   assert.match(template,/AllowedValues:\s+- staging/);
   assert.match(template,/AWS::EC2::Instance/);
+  assert.match(template,/m7i-flex.large/);
+  assert.doesNotMatch(template,/t3.medium/);
   assert.match(template,/AWS::EC2::SecurityGroup/);
   assert.match(template,/AWS::IAM::Role/);
   assert.match(template,/AWS::IAM::InstanceProfile/);
@@ -32,7 +34,7 @@ test('precis consumer is explicitly plan-only until costs and authorizations are
   assert.equal(consumer.environment,'staging');
   assert.equal(consumer.repository,'EagleFox31/Pr-cis-Translation');
   assert.equal(consumer.lifecycle,'PLAN_ONLY');
-  assert.equal(consumer.host.instanceType,'t3.medium');
+  assert.equal(consumer.host.instanceType,'m7i-flex.large');
   assert.equal(consumer.host.rootVolumeGiB,40);
   assert.deepEqual(consumer.host.inboundTcpPorts,[]);
   assert.equal(consumer.application.databaseService,'db');

@@ -1,8 +1,8 @@
 // RAIDER deterministic disposable AWS staging cost policy. Prices are
 // conservative planning inputs, NOT AWS Pricing API quotations.
-const SUPPORTED=new Map([['eu-west-3:t3.medium',0.0472]]);
+const SUPPORTED=new Map([['eu-west-3:t3.small',0.0236],['eu-west-3:c7i-flex.large',0.093],['eu-west-3:m7i-flex.large',0.1117]]);
 const HOURS=168;
-const MAX_ESTIMATE_USD=18;
+const MAX_ESTIMATE_USD=35;
 const MIN_CREDITS_RESERVE_USD=75;
 const STORAGE_GIB_MONTH_UPPER=0.14;
 const PUBLIC_IPV4_HOUR=0.005;
@@ -41,7 +41,7 @@ export function estimateStagingBudget({manifest,expiresAt,now=new Date()}) {
   return {lifetimeHours,computeUsd,ipv4Usd,storageUsd,
     variableReserveUsd:VARIABLE_OPERATIONS_RESERVE,estimatedCeilingUsd,
     maximumPolicyUsd:MAX_ESTIMATE_USD,minimumCreditReserveUsd:MIN_CREDITS_RESERVE_USD,
-    estimatedServiceEligibleForCredits:false,realPricingVerified:false,
+    awsFreeTierTypeEligibleByDocumentation:true,estimatedServiceEligibleForCredits:false,realPricingVerified:false,
     currency:'USD',region:manifest.region,instanceType,rootVolumeGiB};
 }
 

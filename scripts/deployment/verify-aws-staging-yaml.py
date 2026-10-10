@@ -28,13 +28,13 @@ UniqueLoader.add_multi_constructor("!", cfn_tag)
 path = Path("infra/aws/blueprints/reusable-compose-staging-host.yml")
 template = yaml.load(path.read_text(encoding="utf8"), Loader=UniqueLoader)
 assert isinstance(template, dict)
-assert set(template) == {"AWSTemplateFormatVersion", "Description", "Parameters", "Resources", "Outputs"}
+assert set(template) == {"AWSTemplateFormatVersion", "Description", "Parameters", "Conditions", "Resources", "Outputs"}
 assert len(template["Parameters"]) == 10, list(template["Parameters"])
 assert set(template["Resources"]) == {
     "StagingSecurityGroup", "StagingInstanceRole", "StagingInstanceProfile",
     "StagingExpiryRole", "StagingExpirySchedule", "StagingInstance"
 }
-assert template["Resources"]["StagingInstance"]["Properties"]["CreditSpecification"]["CPUCredits"] == "standard"
+assert template["Resources"]["StagingInstance"]["Properties"]["CreditSpecification"] == ["IsBurstableT3", {"CPUCredits": "standard"}, "AWS::NoValue"]
 assert template["Resources"]["StagingExpirySchedule"]["Properties"]["ActionAfterCompletion"] == "DELETE"
 assert template["Resources"]["StagingInstance"]["Properties"]["BlockDeviceMappings"][0]["Ebs"]["Encrypted"] is True
 print("PASS: CloudFormation YAML parsed, unique mapping keys, bounded resources and mandatory TTL")

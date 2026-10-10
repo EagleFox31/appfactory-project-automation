@@ -12,11 +12,11 @@ const plan={
   accountPlanRemainingCredits:{amount:128.82,unit:'USD'}
 };
 const estimate=()=>estimateStagingBudget({manifest,now,expiresAt:after7});
-test('RAIDER staging pilot plan stays under USD 18 for 7 days',()=>{
+test('RAIDER staging pilot plan stays under USD 35 for 7 days',()=>{
   const e=estimate();
   assert.equal(e.lifetimeHours,168);
-  assert.ok(e.estimatedCeilingUsd<18);
-  assert.equal(e.computeUsd,168*0.0472);
+  assert.ok(e.estimatedCeilingUsd<35);
+  assert.equal(e.computeUsd,168*0.1117);
   assert.equal(e.realPricingVerified,false);
   assert.equal(e.estimatedServiceEligibleForCredits,false);
 });
