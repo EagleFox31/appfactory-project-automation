@@ -11,6 +11,8 @@ function evaluateChangeSet(data) {
   const dir=mkdtempSync(join(tmpdir(),'appfactory-cfn-gate-'));
   try{
     writeFileSync(join(dir,'appfactory-precis-changeset.json'),JSON.stringify(data));
+    writeFileSync(join(dir,'appfactory-precis-stack-role.txt'),
+      'arn:aws:iam::458018461157:role/appfactory-staging-iam-cfn-execution\n');
     return spawnSync(process.execPath,[checker],{
       env:{...process.env,RUNNER_TEMP:dir,GITHUB_EVENT_NAME:'workflow_dispatch',
       GITHUB_REF:'refs/heads/main',GITHUB_RUN_ID:'4832',
@@ -71,6 +73,8 @@ test('change-set validator allows exact approved pending CloudFormation recovery
   const dir=mkdtempSync(join(tmpdir(),'appfactory-resume-gate-'));
   try{
     writeFileSync(join(dir,'appfactory-precis-changeset.json'),JSON.stringify({...good,ChangeSetName:'appfactory-precis-staging-38008163231'}));
+    writeFileSync(join(dir,'appfactory-precis-stack-role.txt'),
+      'arn:aws:iam::458018461157:role/appfactory-staging-iam-cfn-execution\n');
     const p=spawnSync(process.execPath,[checker],{encoding:'utf8',env:{
       ...process.env,RUNNER_TEMP:dir,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',
       GITHUB_RUN_ID:'999111',CHANGESET:'appfactory-precis-staging-38008163231'
@@ -78,10 +82,14 @@ test('change-set validator allows exact approved pending CloudFormation recovery
     assert.equal(p.status,0,p.stderr);
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+test('CloudFormation CREATE change set can omit RoleARN when actual Stack.RoleARN matches',()=>{
+  assert.equal(evaluateChangeSet({...good,RoleARN:null}).status,0);
+});
 test('change-set validator binds actual AWS account, service role and permissions boundary',()=>{
   for(const altered of [
     {StackId:'arn:aws:cloudformation:eu-west-3:000000000000:stack/precis-staging-iam-readonly/x'},
     {RoleARN:'arn:aws:iam::458018461157:role/atelier-maitre-prod'},
+    {RoleARN:'arn:aws:iam::000000000000:role/foreign'},
     {Parameters:[]},
     {Capabilities:[]}
   ]) assert.notEqual(evaluateChangeSet({...good,...altered}).status,0);

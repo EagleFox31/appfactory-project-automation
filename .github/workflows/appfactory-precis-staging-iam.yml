@@ -142,6 +142,11 @@ jobs:
           aws cloudformation describe-change-set \
             --region "$AWS_REGION" --stack-name "$CFN_STACK" \
             --change-set-name "$changeset" --output json > "$RUNNER_TEMP/appfactory-precis-changeset.json"
+          # DescribeChangeSet.RoleARN can be null for a CREATE change set.
+          # Bind the service-role check to the actual Stack.RoleARN instead.
+          aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$CFN_STACK" \
+            --query "Stacks[0].RoleARN" --output text > "$RUNNER_TEMP/appfactory-precis-stack-role.txt"
           node scripts/deployment/inspect-precis-staging-iam-changeset.mjs
       - name: Execute explicitly approved IAM-only change set
         if: ${{ inputs.apply }}
@@ -161,7 +166,8 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/appfactory-sts-identity.json" \
             "$RUNNER_TEMP/appfactory-free-plan-state.json" \
-            "$RUNNER_TEMP/appfactory-precis-changeset.json"
+            "$RUNNER_TEMP/appfactory-precis-changeset.json" \
+            "$RUNNER_TEMP/appfactory-precis-stack-role.txt"
 
 # This workflow cannot bootstrap its own AWS IAM deployer role.
 # Onboarding beyond the reader-only role requires a separate audited policy and approval.
