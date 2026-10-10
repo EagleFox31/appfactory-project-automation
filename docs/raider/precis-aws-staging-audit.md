@@ -56,6 +56,42 @@ separate narrow boundary; the existing Free Plan reader boundary is not
 appropriate for an EC2 instance. No application or secret is installed by
 merging the template.
 
+## Financial and teardown design (2026-10-10)
+
+The currently reviewed EC2 instance class is `t3.medium` in Paris, with
+an indicative $0.0472 per hour Linux On-Demand rate (independent pricing
+cross-check: https://www.doit.com/compute/compute/aws/eu-west-3/t3.medium).
+AWS charges $0.005 per public IPv4 address per hour
+(https://aws.amazon.com/vpc/pricing/). The 40-GiB gp3 planning allowance is
+**deliberately conservative at USD 0.14/GiB-month**, not an independently
+verified AWS list price. CPU burst mode is explicitly `standard` to prevent
+surplus T3 Unlimited CPU credit billing.
+
+`src/deployment/aws-staging-budget-gate.mjs` estimates one 7-day instance
+with USD 3 contingency for network/log/snapshot variable usage plus a
+25% cushion, and hard-fails above USD 18 or if the AWS Free Plan would have
+less than USD 75 remaining afterward. It inspects real AWS credit balance
+through the existing OIDC read-only workflow. These are **policy ceilings, not
+AWS billing guarantees**; accurate current pricing, supported credit services,
+quota, taxes, load and host eligibility still require verification.
+
+`StagingExpirySchedule` (EventBridge Scheduler) is declaratively defined in
+the generic host CloudFormation blueprint to delete its **own** disposable
+stack at a reviewed `ExpiresAtUtc`. The schedule's IAM role requires a
+separately approved permissions boundary and can only call
+`cloudformation:DeleteStack` on the owning stack. It is not installed.
+Scheduler failures or CloudFormation DELETE_FAILED can leave residual charges:
+post-expiry verification, retry/alerting and tested teardown must be implemented
+before any paid staging allocation. Deleting the host also deletes its root EBS
+volume; preserve only synthetic test data until backups are fully proven.
+
+The template intentionally has **zero inbound security group rules**. A
+running EC2 instance would *not* be publicly reachable; a controlled outbound
+Cloudflare Tunnel or equivalent must be integrated and health-checked before
+calling Précis publicly deployed. No tunnel credentials exist in this
+blueprint, and normal Docker Compose publishes a web port that the AWS
+security group must continue to block until authenticated tunnel access works.
+
 ## Blocking safety conditions (all required for first EC2 apply)
 
 1. Live cost estimate including hourly EC2, gp3 disk, public IPv4, snapshots,
