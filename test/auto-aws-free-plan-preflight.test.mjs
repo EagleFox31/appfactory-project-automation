@@ -57,6 +57,7 @@ test('automated workflow uses staging OIDC and cannot mutate AWS',()=>{
   assert.match(wf,/id-token: write/);
   assert.match(wf,/aws sts get-caller-identity/);
   assert.match(wf,/aws freetier get-account-plan-state/);
-  assert.doesNotMatch(wf,/aws cloudformation|aws iam|aws ec2|aws ssm|aws freetier upgrade-account-plan/);
+  assert.match(wf,/aws cloudformation validate-template/);
+  assert.doesNotMatch(wf,/aws cloudformation (deploy|create-stack|create-change-set|execute-change-set|delete-stack)|aws iam|aws ec2|aws ssm|aws freetier upgrade-account-plan/);
   assert.doesNotMatch(wf,/\$\{\{ inputs\.apply \}\}|contents: write|packages: write/);
 });

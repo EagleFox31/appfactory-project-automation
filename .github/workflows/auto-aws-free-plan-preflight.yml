@@ -8,6 +8,8 @@ on:
       - infra/aws/appfactory-central-staging-iam-bootstrap.yml
       - src/deployment/aws-free-plan-gate.mjs
       - scripts/deployment/auto-aws-free-plan-preflight.mjs
+      - scripts/deployment/inspect-precis-staging-iam-stack.mjs
+      - scripts/deployment/inspect-precis-staging-iam-template.mjs
   workflow_dispatch:
 
 permissions:
@@ -32,9 +34,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/Pr-cis-Translation
+          ref: efa3f3492abca331453d9f814cc3e6269fbf6d79
+          path: .precis
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify immutable and reviewed Précis template
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git -C .precis rev-parse HEAD)" == efa3f3492abca331453d9f814cc3e6269fbf6d79 ]] || exit 1
+          node scripts/deployment/inspect-precis-staging-iam-template.mjs
       - name: Authenticate against Trigenys with reviewed GitHub OIDC role
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -51,6 +65,13 @@ jobs:
           aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/appfactory-auto-freetier.json"
       - name: Validate credits, plan and account with fail-closed gates
         run: node scripts/deployment/auto-aws-free-plan-preflight.mjs
+      - name: Verify Précis IAM template syntax in real AWS (read only)
+        run: |
+          aws cloudformation validate-template \
+            --region eu-west-3 \
+            --template-body file://.precis/deploy/infra/aws-free-plan-readonly-role.yml
+      - name: Inspect actual Précis tenant IAM stack status (read only)
+        run: node scripts/deployment/inspect-precis-staging-iam-stack.mjs
       - name: Clean up transient account inspection output
         if: always()
         shell: bash
