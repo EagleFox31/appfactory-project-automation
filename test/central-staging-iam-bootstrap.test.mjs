@@ -49,6 +49,19 @@ test('central bootstrap isolates immutable AppFactory OIDC trust and IAM-only pr
   assert.doesNotMatch(central,/AWS::EC2::|AWS::SSM::|AWS::RDS::|AWS::S3::|iam:\*|Action:\s*'\*'/);
   assert.doesNotMatch(central,/AdministratorAccess|PowerUserAccess|AmazonEC2FullAccess/);
 });
+test('existing central CloudFormation stack upgrades IAM-only without replacing original roles',()=>{
+  for(const token of [
+    'StagingReaderBoundary:', 'StagingIamCloudFormationRole:',
+    'AppFactoryStagingIamDeployerRole:', 'PrecisStagingGitHubRole:',
+    'PrecisStagingExecutionRole:', 'StagingInstanceBoundary:', 'StagingExpiryBoundary:'
+  ]) assert.ok(central.includes(token),token);
+  assert.match(central,/RoleName: appfactory-staging-iam-deployer/);
+  assert.match(central,/RoleName: appfactory-staging-iam-cfn-execution/);
+  assert.match(central,/RoleName: precis-translation-staging-github-deployer/);
+  assert.match(central,/RoleName: precis-translation-staging-cfn-execution/);
+  assert.doesNotMatch(central,/atelier-maitre-prod|atelier-maitre-github-actions-role/);
+  assert.doesNotMatch(central,/AWS::EC2::|AWS::SSM::|AWS::Scheduler::|AWS::RDS::/);
+});
 test('workflow defaults to audit and requires explicit approval for write operations',()=>{
   assert.match(workflow,/workflow_dispatch:/);
   assert.match(workflow,/type: boolean\s+default: false/);
