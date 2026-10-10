@@ -123,7 +123,7 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: ManageOnlyPrécisStagingHostRoles
+              - Sid: ManageOnlyPrecisStagingHostRoles
                 Effect: Allow
                 Action:
                   - iam:CreateRole
@@ -179,7 +179,7 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: ManageOnlyPrécisStagingStack
+              - Sid: ManageOnlyPrecisStagingStack
                 Effect: Allow
                 Action:
                   - cloudformation:CreateStack
@@ -240,9 +240,9 @@ Resources:
           Value: staging
 
 Outputs:
-  PrécisStagingGitHubRoleArn:
+  PrecisStagingGitHubRoleArn:
     Value: !GetAtt PrecisStagingGitHubRole.Arn
-  PrécisStagingCloudFormationRoleArn:
+  PrecisStagingCloudFormationRoleArn:
     Value: !GetAtt PrecisStagingExecutionRole.Arn
   StagingInstanceBoundaryArn:
     Value: !Ref StagingInstanceBoundary
