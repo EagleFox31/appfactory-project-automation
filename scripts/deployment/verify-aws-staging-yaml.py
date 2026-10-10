@@ -63,7 +63,17 @@ assert all(
     resource["Type"] in {"AWS::IAM::ManagedPolicy", "AWS::IAM::Role"}
     for resource in central["Resources"].values()
 ), "central update must stay IAM-only, with no EC2"
-assert central["Resources"]["PrecisStagingGitHubRole"] == iam["Resources"]["PrecisStagingGitHubRole"]
+# Standalone candidate used a parameter reference. The existing central stack
+# already knows its GitHub OIDC provider, so bind directly to the same ARN.
+github_legacy = iam["Resources"]["PrecisStagingGitHubRole"]
+github_central = central["Resources"]["PrecisStagingGitHubRole"]
+assert github_central["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]["Principal"]["Federated"] == (
+    "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+)
+github_legacy["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]["Principal"]["Federated"] = (
+    github_central["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]["Principal"]["Federated"]
+)
+assert github_central == github_legacy
 assert central["Resources"]["PrecisStagingExecutionRole"] == iam["Resources"]["PrecisStagingExecutionRole"]
 assert central["Resources"]["StagingInstanceBoundary"] == iam["Resources"]["StagingInstanceBoundary"]
 assert central["Resources"]["StagingExpiryBoundary"] == iam["Resources"]["StagingExpiryBoundary"]
