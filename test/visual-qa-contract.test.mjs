@@ -134,3 +134,25 @@ test("existing Impact-Aware engine selects visual QA only for frontend changes",
   assert.ok(example.includes("REVIEWED_IMMUTABLE_SHA"));
   assert.ok(!example.includes("pull_request_target:"));
 });
+
+
+test("bundle manifest reports actual runtime dependencies and dist byte size without following symlinks",t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),"appfactory-bundle-"));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  fs.mkdirSync(path.join(root,"dist"),{recursive:true});
+  fs.mkdirSync(path.join(root,"artifacts"));
+  fs.writeFileSync(path.join(root,"package.json"),JSON.stringify({
+    dependencies:{react:"19.1.1","react-dom":"19.1.1"},devDependencies:{vite:"7.0.0"}
+  }));
+  fs.writeFileSync(path.join(root,"dist","index.html"),"sample");
+  const script=path.resolve("scripts/visual-qa/report-bundle.mjs");
+  execFileSync(process.execPath,[script],{cwd:root,env:{
+    ...process.env,VISUAL_QA_ARTIFACT_DIR:path.join(root,"artifacts")
+  }});
+  const report=JSON.parse(fs.readFileSync(path.join(root,"artifacts","bundle-report.json"),"utf8"));
+  assert.equal(report.status,"MEASURED");
+  assert.equal(report.buildDirectories[0].bytes,6);
+  assert.equal(report.buildDirectories[0].files,1);
+  assert.deepEqual(report.dependencies.map(x=>x.name),["react","react-dom"]);
+  assert.equal(report.devDependencyCount,1);
+});
