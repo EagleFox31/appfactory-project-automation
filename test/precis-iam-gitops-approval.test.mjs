@@ -54,7 +54,7 @@ test('dispatch workflow cannot touch AWS, and requires owner-origin main push',(
   const path=new URL('../.github/workflows/approved-precis-iam-dispatch.yml',import.meta.url);
   const wf=readFileSync(path,'utf8');
   assert.match(wf,/branches: \[main\]/);
-  assert.match(wf,/infra\\/aws\\/approvals\\/precis-staging-iam-reader\\.json/);
+  assert.ok(wf.includes('infra/aws/approvals/precis-staging-iam-reader.json'));
   assert.match(wf,/github\.actor == 'EagleFox31'/);
   assert.match(wf,/verify-precis-iam-gitops-approval\.mjs/);
   assert.match(wf,/gh workflow run appfactory-precis-staging-iam\.yml/);
