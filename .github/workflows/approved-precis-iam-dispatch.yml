@@ -1,0 +1,55 @@
+name: Approved Précis staging IAM reader - GitOps dispatch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/aws/approvals/precis-staging-iam-reader.json
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: appfactory-precis-reader-gitops-approval
+  cancel-in-progress: false
+
+jobs:
+  dispatch-only:
+    name: Validate signed-in owner approval and dispatch existing IAM gate
+    if: github.repository == 'EagleFox31/appfactory-project-automation' && github.actor == 'EagleFox31' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate exact, short-lived, one-file approval
+        env:
+          APPROVAL_BEFORE: ${{ github.event.before }}
+        run: node scripts/deployment/verify-precis-iam-gitops-approval.mjs
+      - name: Dispatch existing guarded IAM-only staging workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run appfactory-precis-staging-iam.yml \
+            --repo "$GH_REPO" \
+            --ref main \
+            -f apply=true \
+            -f confirmation=APPLY_PRECIS_STAGING_READER
+          echo "IAM-only workflow dispatched; no AWS API used by approval workflow." >> "$GITHUB_STEP_SUMMARY"
+
+# This job never touches AWS. It dispatches a separately reviewed workflow
+# only after a one-file, owner-origin, short-lived approval PR merge on main.
+# Until this exact approval marker is introduced after explicit authorization,
+# no IAM changes are triggered by the presence of this code alone.
