@@ -96,6 +96,11 @@ jobs:
           bash -euo pipefail -c "$INSTALL_COMMAND"
           bash -euo pipefail -c "$BUILD_COMMAND"
 
+      - name: Record runtime dependencies and build size
+        if: always()
+        shell: bash
+        run: node .appfactory-visual/scripts/visual-qa/report-bundle.mjs
+
       - name: Start local preview server
         shell: bash
         run: |
