@@ -107,7 +107,7 @@ test("workflow is unprivileged, reusable, renders via browser and uploads eviden
   for(const token of [
     "chromium.launch","AxeBuilder","page.screenshot",
     "page.keyboard.press","prefers-reduced-motion: reduce",
-    "runLighthouse","evaluateLighthouse","visualGateSummary"
+    "runLighthouse","evaluateLighthouse","visualGateSummary", "failureSummary", "n.target.slice"
   ])assert.ok(runner.includes(token),token);
 });
 
