@@ -6,6 +6,41 @@ Before related work, search this file for known failure modes. If a documented f
 
 ## Lessons
 
+### LESSON-2026-015 — Validate the exact CloudFormation YAML in pull requests
+
+- **Date:** 2026-10-10
+- **Category:** IaC / validation / failure memory
+- **Status:** prevention-added
+- **Related:** issue #120, PRs #122–#123, failed staging blueprint validation #38011183131
+
+**Context and failure**
+
+A parameterized, reusable staging EC2+SSM template passed text-based
+security and unit tests but contained duplicate top-level `Resources`
+and `Outputs` mappings, plus an unterminated YAML regular-expression
+string. GitHub CI passed and merged it; live AWS `ValidateTemplate`
+correctly rejected it before any resource could be created.
+
+**Root cause**
+
+Pattern-matching tests are not a YAML parser and cannot detect duplicate
+mapping keys. A generated IaC file was not strictly parsed by CI.
+
+**Resolution**
+
+PR #123 restored one canonical parameter/resource/output mapping and added
+`scripts/deployment/verify-aws-staging-yaml.py` to every PR's CI. It uses
+a strict PyYAML loader to reject duplicate keys, malformed scalars,
+unexpected resources, missing TTL scheduler and missing encrypted EBS.
+
+**Prevention and generalized lesson**
+
+Every reusable CloudFormation/IaC template must first pass strict parser
+validation **on PRs**, followed by provider-native syntax validation in
+a trusted read-only environment before any change-set or apply.
+A successful local policy regex check is not proof of syntactic validity.
+The recovery avoids creating any infrastructure while testing.
+
 ### LESSON-2026-014 — GitHub GITHUB_ENV is not available in the same step
 
 - **Date:** 2026-10-10
