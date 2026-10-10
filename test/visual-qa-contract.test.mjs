@@ -118,3 +118,19 @@ test("self test is actual reusable workflow call gated by frontend-specific path
   assert.ok(workflow.includes("test/fixtures/visual-qa-site/config.json"));
   assert.ok(!workflow.includes("pull_request_target:"));
 });
+
+
+test("existing Impact-Aware engine selects visual QA only for frontend changes",async()=>{
+  const { analyzeImpact }=await import("../src/impact/engine.mjs");
+  const policy=JSON.parse(fs.readFileSync("examples/visual-qa-impact.json","utf8"));
+  assert.deepEqual(analyzeImpact(policy,["src/App.tsx"]).gates,["frontend-unit","visual-qa"]);
+  assert.deepEqual(analyzeImpact(policy,["api/session.ts"]).gates,["backend-unit"]);
+  assert.deepEqual(analyzeImpact(policy,["docs/intro.md"]).gates,[]);
+  assert.ok(analyzeImpact(policy,["unknown/new-file.js"]).gates.includes("visual-qa"));
+  const example=fs.readFileSync("examples/visual-qa-impact-aware-ci.yml","utf8");
+  assert.ok(example.includes("reusable-impact-analysis.yml"));
+  assert.ok(example.includes("reusable-visual-qa.yml"));
+  assert.ok(example.includes("contains(fromJSON(needs.impact.outputs.gates), 'visual-qa')"));
+  assert.ok(example.includes("REVIEWED_IMMUTABLE_SHA"));
+  assert.ok(!example.includes("pull_request_target:"));
+});
