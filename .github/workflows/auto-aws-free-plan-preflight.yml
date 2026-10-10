@@ -80,6 +80,15 @@ jobs:
             --change-set-name appfactory-precis-staging-38008163231 \
             --query '{StackName:StackName,ChangeSetName:ChangeSetName,RoleARN:RoleARN,Capabilities:Capabilities,Status:Status,ExecutionStatus:ExecutionStatus,ParameterKeys:Parameters[].ParameterKey}' \
             --output json
+      - name: Inspect exact pending stack service-role association (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation describe-stacks \
+            --region eu-west-3 \
+            --stack-name precis-staging-iam-readonly \
+            --query '{StackName:Stacks[0].StackName,StackStatus:Stacks[0].StackStatus,RoleARN:Stacks[0].RoleARN}' \
+            --output json
       - name: Inspect actual Précis tenant IAM stack status (read only)
         run: node scripts/deployment/inspect-precis-staging-iam-stack.mjs
       - name: Clean up transient account inspection output
