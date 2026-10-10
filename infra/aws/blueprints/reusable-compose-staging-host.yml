@@ -89,6 +89,16 @@ Resources:
           Value: !Ref Environment
         - Key: AppFactoryManaged
           Value: 'true'
+      Policies:
+        - PolicyName: ReadExactStagingRuntimeEnv
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadStagingRuntimeEnvOnly
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectSlug}/${Environment}/env'
 
   StagingInstanceProfile:
     Type: AWS::IAM::InstanceProfile

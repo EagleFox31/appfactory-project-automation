@@ -1,0 +1,267 @@
+name: Reusable AWS EC2/SSM Docker Compose deployment (Atelier pattern)
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        description: Pinned reviewed AppFactory commit
+        type: string
+        required: true
+      source_sha:
+        description: Exact reviewed app commit
+        type: string
+        required: true
+      project_slug:
+        type: string
+        required: true
+      account_id:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      stack_name:
+        type: string
+        required: true
+      deploy_role_arn:
+        type: string
+        required: true
+      cloudformation_role_arn:
+        type: string
+        required: true
+      runtime_parameter:
+        description: Exact SSM SecureString parameter owned by the project
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Provision + deploy + verify dedicated Compose staging host
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    environment: staging
+    concurrency:
+      group: appfactory-aws-ssm-${{ github.repository }}-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout reviewed consumer version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout immutable AppFactory deploy adapter
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory
+          persist-credentials: false
+      - name: Reject incorrect project scope before assuming AWS role
+        shell: bash
+        env:
+          SOURCE: ${{ inputs.source_sha }}
+          PROJECT: ${{ inputs.project_slug }}
+          ACCOUNT: ${{ inputs.account_id }}
+          REGION: ${{ inputs.region }}
+          STACK: ${{ inputs.stack_name }}
+          ROLE: ${{ inputs.deploy_role_arn }}
+          CFN_ROLE: ${{ inputs.cloudformation_role_arn }}
+          PARAMETER: ${{ inputs.runtime_parameter }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE" =~ ^[a-f0-9]{40}$ ]] && [[ "$(git rev-parse HEAD)" == "$SOURCE" ]]
+          [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{2,23}$ ]]
+          [[ "$ACCOUNT" =~ ^[0-9]{12}$ ]] && [[ "$REGION" == eu-west-3 ]]
+          [[ "$STACK" == "${PROJECT}-staging-app" ]]
+          [[ "$ROLE" == "arn:aws:iam::${ACCOUNT}:role/${PROJECT}-staging-github-deployer" ]]
+          [[ "$CFN_ROLE" == "arn:aws:iam::${ACCOUNT}:role/${PROJECT}-staging-cfn-execution" ]]
+          [[ "$PARAMETER" == "/${PROJECT}/staging/env" ]]
+          [[ "${{ github.repository }}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 1
+      - name: Authenticate as isolated Précis deploy role via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.deploy_role_arn }}
+          aws-region: ${{ inputs.region }}
+          role-session-name: appfactory-precis-staging-deploy
+          role-duration-seconds: 3600
+      - name: Verify account and Free Plan before any deployment changes
+        shell: bash
+        env:
+          ACCOUNT: ${{ inputs.account_id }}
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == "$ACCOUNT" ]]
+          aws freetier get-account-plan-state --region us-east-1 --output json > "$RUNNER_TEMP/free-plan.json"
+          python - <<'PY'
+          import json,os,datetime
+          v=json.load(open(os.environ['RUNNER_TEMP']+'/free-plan.json'))
+          assert v['accountPlanType']=='FREE' and v['accountPlanStatus']=='ACTIVE'
+          assert v['accountPlanRemainingCredits']['unit']=='USD'
+          assert v['accountPlanRemainingCredits']['amount']>=75
+          expires=datetime.datetime.fromisoformat(v['accountPlanExpirationDate'].replace('Z','+00:00'))
+          assert expires-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(days=10)
+          print('Free Plan valid; deploy can consume existing credits, not guaranteed zero-billed')
+          PY
+          rm -f "$RUNNER_TEMP/free-plan.json"
+      - name: Fail before provisioning if required staging runtime secrets are absent
+        shell: bash
+        env:
+          RUNTIME_PARAMETER: ${{ inputs.runtime_parameter }}
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/appfactory-staging-runtime.env"' EXIT
+          aws ssm get-parameter --name "$RUNTIME_PARAMETER" --with-decryption \
+            --query Parameter.Value --output text > "$RUNNER_TEMP/appfactory-staging-runtime.env"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          vals={}
+          for row in Path(os.environ['RUNNER_TEMP']+'/appfactory-staging-runtime.env').read_text().splitlines():
+              if '=' in row and not row.lstrip().startswith('#'):
+                  key,val=row.split('=',1)
+                  vals[key.strip()]=val.strip()
+          required=['DEEPSEEK_API_KEY','FRONTEND_API_KEY','POSTGRES_PASSWORD','JWT_SECRET']
+          assert all(vals.get(k) for k in required), 'required staging secrets missing'
+          assert len(vals['JWT_SECRET'])>=32, 'JWT_SECRET too short'
+          assert vals.get('CAMPAY_ENV')=='DEMO' and vals.get('EMAIL_ENABLED','false').lower()=='false'
+          assert vals.get('PRECIS_ENV') in ('staging','production')
+          print('Runtime SecureString config found and validated without printing secrets')
+          PY
+      - name: Discover eligible network and x86 AMI without console intervention
+        shell: bash
+        run: |
+          set -euo pipefail
+          VPC="$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)"
+          [[ "$VPC" =~ ^vpc-[a-f0-9]+$ ]] || { echo "::error::No existing default VPC"; exit 1; }
+          SUBNET="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC" --query 'Subnets[0].SubnetId' --output text)"
+          [[ "$SUBNET" =~ ^subnet-[a-f0-9]+$ ]] || exit 1
+          AMI="$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 --query Parameter.Value --output text)"
+          [[ "$AMI" =~ ^ami-[a-f0-9]+$ ]] || exit 1
+          {
+            echo "APPFACTORY_VPC=$VPC"
+            echo "APPFACTORY_SUBNET=$SUBNET"
+            echo "APPFACTORY_AMI=$AMI"
+          } >> "$GITHUB_ENV"
+      - name: Validate reviewed AppFactory CloudFormation host model
+        run: |
+          aws cloudformation validate-template --region ${{ inputs.region }} \
+            --template-body file://.appfactory/infra/aws/blueprints/reusable-compose-staging-host.yml
+      - name: Deploy isolated reusable staging stack (same proven Atelier mechanism)
+        env:
+          ACCOUNT: ${{ inputs.account_id }}
+          STACK: ${{ inputs.stack_name }}
+          CFN_ROLE: ${{ inputs.cloudformation_role_arn }}
+          PROJECT: ${{ inputs.project_slug }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This run has no authority to alter Atelier production: stack and role differ.
+          # CloudFormation is idempotent; repeated deploys converge without new instances.
+          EXPIRY="$(date -u -d '+167 hours' '+%Y-%m-%dT%H:%M:%S')"
+          aws cloudformation deploy \
+            --region ${{ inputs.region }} \
+            --template-file .appfactory/infra/aws/blueprints/reusable-compose-staging-host.yml \
+            --stack-name "$STACK" \
+            --role-arn "$CFN_ROLE" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ProjectSlug="$PROJECT" Environment=staging InstanceType=m7i-flex.large \
+              RootVolumeGiB=40 VpcId="$APPFACTORY_VPC" SubnetId="$APPFACTORY_SUBNET" \
+              AmiId="$APPFACTORY_AMI" ExpiresAtUtc="$EXPIRY" \
+              InstanceRoleBoundaryArn="arn:aws:iam::${ACCOUNT}:policy/appfactory-staging-ssm-instance-boundary" \
+              TtlSchedulerRoleBoundaryArn="arn:aws:iam::${ACCOUNT}:policy/appfactory-staging-ttl-scheduler-boundary" \
+            --no-fail-on-empty-changeset
+      - name: Discover exact provisioned EC2 instance via CloudFormation
+        id: target
+        shell: bash
+        env:
+          STACK: ${{ inputs.stack_name }}
+        run: |
+          set -euo pipefail
+          ID="$(aws cloudformation describe-stacks --stack-name "$STACK" \
+            --query "Stacks[0].Outputs[?OutputKey=='StagingInstanceId'].OutputValue | [0]" --output text)"
+          [[ "$ID" =~ ^i-[a-f0-9]{8}([a-f0-9]{9})?$ ]] || exit 1
+          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
+      - name: Wait for SSM availability (no SSH credentials)
+        shell: bash
+        env:
+          TARGET: ${{ steps.target.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 45); do
+            S="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$TARGET" \
+              --query 'InstanceInformationList[0].PingStatus' --output text)"
+            [[ "$S" == Online ]] && exit 0
+            sleep 10
+          done
+          echo "::error::Dedicated Précis host never became SSM Online"; exit 1
+      - name: Deploy immutable application commit through SSM
+        shell: bash
+        env:
+          TARGET: ${{ steps.target.outputs.instance_id }}
+          SOURCE: ${{ inputs.source_sha }}
+          PARAMETER: ${{ inputs.runtime_parameter }}
+          PROJECT: ${{ inputs.project_slug }}
+          SOURCE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{2,23}$ ]]
+          [[ "$SOURCE_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$PARAMETER" == "/${PROJECT}/staging/env" ]]
+          # Only literals or validated SHA enter shell commands.
+          cat > "$RUNNER_TEMP/appfactory-ssm-commands.json" <<EOF
+          {
+            "commands": [
+              "set -eu",
+              "cloud-init status --wait",
+              "dnf install -y git docker",
+              "systemctl enable --now docker",
+              "mkdir -p /opt/appfactory/$PROJECT",
+              "if [ ! -d /opt/appfactory/$PROJECT/repo/.git ]; then git clone --no-checkout https://github.com/$SOURCE_REPO.git /opt/appfactory/$PROJECT/repo; fi",
+              "git -C /opt/appfactory/$PROJECT/repo fetch --depth 1 origin $SOURCE",
+              "git -C /opt/appfactory/$PROJECT/repo checkout --force $SOURCE",
+              "bash /opt/appfactory/$PROJECT/repo/scripts/staging/aws-ssm-compose.sh"
+            ]
+          }
+          EOF
+          CMD_ID="$(aws ssm send-command \
+            --instance-ids "$TARGET" --document-name AWS-RunShellScript \
+            --comment "AppFactory immutable Compose staging release $SOURCE" \
+            --parameters "file://$RUNNER_TEMP/appfactory-ssm-commands.json" \
+            --timeout-seconds 3600 --query 'Command.CommandId' --output text)"
+          [[ "$CMD_ID" =~ ^[0-9a-f-]{36}$ ]] || exit 1
+          for i in $(seq 1 180); do
+            STATUS="$(aws ssm get-command-invocation --command-id "$CMD_ID" \
+              --instance-id "$TARGET" --query Status --output text 2>/dev/null || true)"
+            case "$STATUS" in
+              Success) echo "AppFactory SSM app release succeeded" >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "::error::AppFactory SSM release failed ($STATUS)"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::AppFactory rollout did not finish within 45 minutes"; exit 1
+      - name: Report honest deployment state
+        shell: bash
+        env:
+          TARGET: ${{ steps.target.outputs.instance_id }}
+        run: |
+          {
+            echo '### AppFactory private staging — EC2 + SSM deployed'
+            echo "- AWS account: ${{ inputs.account_id }} / ${{ inputs.region }}"
+            echo "- Dedicated CloudFormation stack: ${{ inputs.stack_name }}"
+            echo "- SSM host: $TARGET"
+            echo "- Commit: ${{ inputs.source_sha }}"
+            echo '- Internal Compose health checked on host. No public ingress opened.'
+            echo '- Public URL requires a separately approved Cloudflare tunnel or HTTPS entrypoint.'
+          } >> "$GITHUB_STEP_SUMMARY"
