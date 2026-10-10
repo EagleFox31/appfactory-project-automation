@@ -1,0 +1,35 @@
+name: Consumer Impact-Aware Visual QA
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  impact:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-impact-analysis.yml@REVIEWED_IMMUTABLE_SHA
+    with:
+      appfactory_ref: REVIEWED_IMMUTABLE_SHA
+      config_path: .github/appfactory-impact.json
+      mode: ${{ github.event_name == 'workflow_dispatch' && 'all' || 'auto' }}
+
+  # Backend-only changes do not execute any browser work.
+  visual-qa:
+    needs: impact
+    if: ${{ contains(fromJSON(needs.impact.outputs.gates), 'visual-qa') }}
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-visual-qa.yml@REVIEWED_IMMUTABLE_SHA
+    permissions:
+      contents: read
+    with:
+      appfactory_ref: REVIEWED_IMMUTABLE_SHA
+      config_path: .github/appfactory-visual-qa.json
+      checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      install_command: npm ci --no-audit --no-fund
+      build_command: npm run build
+      start_command: npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
+      server_url: http://127.0.0.1:4173/
