@@ -10,6 +10,10 @@ on:
       - "test/visual-qa-contract.test.mjs"
   workflow_dispatch:
 
+concurrency:
+  group: visual-qa-self-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
