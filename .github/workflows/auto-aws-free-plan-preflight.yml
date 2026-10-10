@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: EagleFox31/Pr-cis-Translation
-          ref: efa3f3492abca331453d9f814cc3e6269fbf6d79
+          ref: 18618e5ca8b76a3a6b62278e16e0c6fd2fd078fd
           path: .precis
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$(git -C .precis rev-parse HEAD)" == efa3f3492abca331453d9f814cc3e6269fbf6d79 ]] || exit 1
+          [[ "$(git -C .precis rev-parse HEAD)" == 18618e5ca8b76a3a6b62278e16e0c6fd2fd078fd ]] || exit 1
           node scripts/deployment/inspect-precis-staging-iam-template.mjs
       - name: Authenticate against Trigenys with reviewed GitHub OIDC role
         uses: aws-actions/configure-aws-credentials@v4
