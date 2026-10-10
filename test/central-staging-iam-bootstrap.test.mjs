@@ -22,6 +22,13 @@ function evaluateChangeSet(data) {
 const good={
   StackName:'precis-staging-iam-readonly',
   ChangeSetName:'appfactory-precis-staging-4832',
+  StackId:'arn:aws:cloudformation:eu-west-3:458018461157:stack/precis-staging-iam-readonly/example',
+  RoleARN:'arn:aws:iam::458018461157:role/appfactory-staging-iam-cfn-execution',
+  Parameters:[
+    {ParameterKey:'GitHubOidcProviderArn',ParameterValue:'arn:aws:iam::458018461157:oidc-provider/token.actions.githubusercontent.com'},
+    {ParameterKey:'PermissionsBoundaryArn',ParameterValue:'arn:aws:iam::458018461157:policy/appfactory-staging-free-plan-boundary'}
+  ],
+  Capabilities:['CAPABILITY_NAMED_IAM'],
   Status:'CREATE_COMPLETE',ExecutionStatus:'AVAILABLE',
   ChangeSetType:'CREATE',
   Changes:[{ResourceChange:{
@@ -59,6 +66,25 @@ test('workflow defaults to audit and requires explicit approval for write operat
 test('change-set validator accepts one narrowly scoped IAM role creation',()=>{
   const result=evaluateChangeSet(good);
   assert.equal(result.status,0,result.stderr);
+});
+test('change-set validator allows exact approved pending CloudFormation recovery',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'appfactory-resume-gate-'));
+  try{
+    writeFileSync(join(dir,'appfactory-precis-changeset.json'),JSON.stringify({...good,ChangeSetName:'appfactory-precis-staging-38008163231'}));
+    const p=spawnSync(process.execPath,[checker],{encoding:'utf8',env:{
+      ...process.env,RUNNER_TEMP:dir,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',
+      GITHUB_RUN_ID:'999111',CHANGESET:'appfactory-precis-staging-38008163231'
+    }});
+    assert.equal(p.status,0,p.stderr);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('change-set validator binds actual AWS account, service role and permissions boundary',()=>{
+  for(const altered of [
+    {StackId:'arn:aws:cloudformation:eu-west-3:000000000000:stack/precis-staging-iam-readonly/x'},
+    {RoleARN:'arn:aws:iam::458018461157:role/atelier-maitre-prod'},
+    {Parameters:[]},
+    {Capabilities:[]}
+  ]) assert.notEqual(evaluateChangeSet({...good,...altered}).status,0);
 });
 test('change-set validator fails closed on updates and extra resources',()=>{
   for(const variant of [
