@@ -72,7 +72,7 @@ An independently approved run with `apply=true` and confirmation
 change set, verifies exactly **one new IAM reader role** before execution,
 and creates only the isolated Précis role. The workflow fails on an existing
 stack rather than silently updating it. AppFactory pins the reviewed public Précis main-branch commit directly as
-`PRECIS_REVIEWED_SHA` (currently `efa3f3492abca331453d9f814cc3e6269fbf6d79`),
+`PRECIS_REVIEWED_SHA` (currently `18618e5ca8b76a3a6b62278e16e0c6fd2fd078fd`),
 so no commit SHA needs to be copied into the manual workflow run. A future
 consumer template change requires a reviewed AppFactory PR updating this pin.
 AppFactory also pins the exact approved template Git blob.

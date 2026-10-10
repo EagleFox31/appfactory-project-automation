@@ -7,9 +7,9 @@ const bytes=readFileSync(path);
 const gitBlob=createHash('sha1')
   .update('blob '+bytes.length+'\0')
   .update(bytes).digest('hex');
-// The exact reviewed GitHub blob from Précis PR #7: bounded reader only.
+// The exact reviewed GitHub blob from Précis repair PR #8: bounded reader only.
 // A change to that file must explicitly update this fingerprint through review.
-const REVIEWED_BLOB='e417e3ebe59e85f4fcaf8365b4a5fc7cb392b5a1';
+const REVIEWED_BLOB='996be22806afb8fc1eecc11432d8b9ac64548dd2';
 if(gitBlob!==REVIEWED_BLOB)
   throw new Error('Précis staging IAM template differs from exact reviewed Git blob');
 const source=bytes.toString('utf8');

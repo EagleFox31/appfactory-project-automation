@@ -34,7 +34,7 @@ jobs:
       AWS_ACCOUNT: '458018461157'
       CFN_STACK: precis-staging-iam-readonly
       APPFACTORY_READER_ROLE: precis-translation-staging-free-plan-read
-      PRECIS_REVIEWED_SHA: efa3f3492abca331453d9f814cc3e6269fbf6d79
+      PRECIS_REVIEWED_SHA: 18618e5ca8b76a3a6b62278e16e0c6fd2fd078fd
     steps:
       - name: Fail closed on branch, code SHA and approval
         shell: bash
