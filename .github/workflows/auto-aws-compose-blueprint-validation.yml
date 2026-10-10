@@ -1,0 +1,63 @@
+name: AWS reusable Compose staging blueprint - validate only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/aws/blueprints/reusable-compose-staging-host.yml
+      - infra/aws/consumers/precis-staging.json
+      - .github/workflows/auto-aws-compose-blueprint-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate-only:
+    if: github.repository == 'EagleFox31/appfactory-project-automation' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check RAIDER consumer constraints; fail if anyone enables apply prematurely
+        run: |
+          node --test test/aws-reusable-compose-staging-blueprint.test.mjs
+      - name: Assume central read-only-capable OIDC staging role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::458018461157:role/appfactory-staging-iam-deployer
+          aws-region: eu-west-3
+          role-session-name: appfactory-compose-blueprint-validator
+          role-duration-seconds: 900
+      - name: Validate exact Trigenys AWS account, no mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 458018461157 ]] || exit 1
+      - name: Validate reusable staging host CloudFormation template against real AWS
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template \
+            --region eu-west-3 \
+            --template-body file://infra/aws/blueprints/reusable-compose-staging-host.yml \
+            --query '{Description:Description,Capabilities:Capabilities}' --output json
+          {
+            echo '### RAIDER AWS Compose staging blueprint - AWS template validation passed'
+            echo '- Only template validation and account identity query were executed.'
+            echo '- Précis manifest remains PLAN_ONLY with no authorized paid resources.'
+            echo '- No server, network, instance profile or IAM permissions were created.'
+            echo '- Next gates: pricing, dedicated provisioner approval, TTL and backup.'
+          } >> "$GITHUB_STEP_SUMMARY"
+# This workflow must remain read-only. Neither GitHub nor AWS has permission
+# to provision EC2/SSM with the currently delegated central reader role.
