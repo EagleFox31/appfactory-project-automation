@@ -26,8 +26,9 @@ Parameters:
     Type: String
     AllowedValues:
       - t3.small
-      - t3.medium
-    Description: Select only after verified CPU/RAM feasibility and AWS pricing
+      - c7i-flex.large
+      - m7i-flex.large
+    Description: AWS post-2025 Free Tier eligible types only; verify Paris availability and real account credits
   ExpiresAtUtc:
     Type: String
     Description: Mandatory expiry UTC; externally validated to 168h
@@ -45,6 +46,8 @@ Parameters:
     Type: String
     Description: Preapproved dedicated EC2 SSM instance role permissions boundary
     AllowedPattern: '^arn:aws:iam::[0-9]{12}:policy/appfactory-staging-ssm-instance-boundary$'
+Conditions:
+  IsBurstableT3: !Equals [!Ref InstanceType, t3.small]
 Resources:
   StagingSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -149,8 +152,10 @@ Resources:
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref StagingInstanceProfile
       EbsOptimized: true
-      CreditSpecification:
-        CPUCredits: standard
+      CreditSpecification: !If
+        - IsBurstableT3
+        - CPUCredits: standard
+        - !Ref 'AWS::NoValue'
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
