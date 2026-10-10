@@ -1,0 +1,48 @@
+{
+  "contractVersion": 1,
+  "project": "precis-translation",
+  "repository": "EagleFox31/Pr-cis-Translation",
+  "environment": "staging",
+  "provider": "aws",
+  "region": "eu-west-3",
+  "accountId": "458018461157",
+  "blueprint": "infra/aws/blueprints/reusable-compose-staging-host.yml",
+  "lifecycle": "PLAN_ONLY",
+  "existingNetworkRequired": true,
+  "host": {
+    "architecture": "x86_64",
+    "operatingSystem": "amazon-linux-2023",
+    "instanceType": "t3.medium",
+    "rootVolumeGiB": 40,
+    "inboundTcpPorts": [],
+    "outboundTcpPorts": [
+      443
+    ],
+    "ebsEncrypted": true,
+    "ebsDeleteOnTermination": true,
+    "ssmManaged": true,
+    "dedicatedInstanceRoleBoundaryRequired": true,
+    "publicIpv4ForOutboundOnly": true
+  },
+  "application": {
+    "composeFile": "docker-compose.yml",
+    "backendService": "backend",
+    "frontendService": "web",
+    "databaseService": "db",
+    "translationVolume": "translations",
+    "postgresVolume": "pgdata",
+    "internalHealthPath": "/health",
+    "environmentSource": "SSM SecureString or Secrets Manager (not configured)",
+    "realCustomerDataAllowed": false,
+    "productionCredentialsAllowed": false
+  },
+  "safety": {
+    "maxPlannedHours": 168,
+    "automaticTTLTeardownImplemented": false,
+    "costEstimateVerified": false,
+    "permissionsBoundaryInstalled": false,
+    "awsStackAuthorizedForApply": false,
+    "backupAndRestoreOnHostVerified": false,
+    "safeToApply": false
+  }
+}
