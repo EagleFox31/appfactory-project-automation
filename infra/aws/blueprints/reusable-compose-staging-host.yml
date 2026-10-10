@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Reusable AppFactory staging Docker Compose host (plan only until explicit
+  EC2/IAM cost and trust approval). Existing network, outbound-only HTTPS,
+  dedicated bounded SSM instance profile, encrypted gp3 EBS.
+Parameters:
+  ProjectSlug:
+    Type: String
+    MinLength: 3
+    MaxLength: 24
+    AllowedPattern: '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$'
+  Environment:
+    Type: String
+    AllowedValues:
+      - staging
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Approved existing VPC for isolated staging
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Existing approved subnet with route to an internet gateway
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Explicitly reviewed and pinned x86_64 Amazon Linux 2023 AMI
+  InstanceType:
+    Type: String
+    AllowedValues:
+      - t3.small
+      - t3.medium
+    Description: Select only after verified CPU/RAM feasibility and AWS pricing
+  RootVolumeGiB:
+    Type: Number
+    Default: 40
+    MinValue: 30
+    MaxValue: 80
+  InstanceRoleBoundaryArn:
+    Type: String
+    Description: Dedicated, preapproved SSM instance permissions boundary (not Free Plan reader boundary)
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:policy/appfactory-staging-ssm-instance-boundary$'
+Resources:
+  StagingSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound HTTPS for SSM and container registry, zero inbound rules
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: AppFactoryProject
+          Value: !Ref ProjectSlug
+        - Key: AppFactoryEnvironment
+          Value: !Ref Environment
+        - Key: AppFactoryManaged
+          Value: 'true'
+
+  StagingInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectSlug}-${Environment}-ssm'
+      Description: Dedicated SSM-managed staging instance role; never Atelier production
+      PermissionsBoundary: !Ref InstanceRoleBoundaryArn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Tags:
+        - Key: AppFactoryProject
+          Value: !Ref ProjectSlug
+        - Key: AppFactoryEnvironment
+          Value: !Ref Environment
+        - Key: AppFactoryManaged
+          Value: 'true'
+
+  StagingInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ProjectSlug}-${Environment}-ssm-profile'
+      Roles:
+        - !Ref StagingInstanceRole
+
+  StagingInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref StagingInstanceProfile
+      EbsOptimized: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref RootVolumeGiB
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          SubnetId: !Ref SubnetId
+          GroupSet:
+            - !Ref StagingSecurityGroup
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          dnf install -y docker
+          systemctl enable --now docker
+          systemctl enable --now amazon-ssm-agent
+          mkdir -p /srv/appfactory
+          chmod 750 /srv/appfactory
+          # No credentials, application data or deployment in user data.
+          # Images pinned by digest and Compose will be driven by reviewed SSM workflows.
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectSlug}-${Environment}'
+        - Key: AppFactoryProject
+          Value: !Ref ProjectSlug
+        - Key: AppFactoryEnvironment
+          Value: !Ref Environment
+        - Key: AppFactoryManaged
+          Value: 'true'
+
+Outputs:
+  StagingInstanceId:
+    Description: Exact isolated EC2 target for the future SSM deployment contract
+    Value: !Ref StagingInstance
+  StagingSecurityGroupId:
+    Value: !Ref StagingSecurityGroup
+  StagingInstanceProfileName:
+    Value: !Ref StagingInstanceProfile
