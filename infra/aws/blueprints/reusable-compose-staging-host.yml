@@ -4,6 +4,11 @@ Description: >-
   EC2/IAM cost and trust approval). Existing network, outbound-only HTTPS,
   dedicated bounded SSM instance profile, encrypted gp3 EBS.
 Parameters:
+  HostLifecycle:
+    Type: String
+    Default: ephemeral
+    AllowedValues: [ephemeral, persistent]
+    Description: Persistent hosts have no automatic deletion and retain the root data disk on termination.
   ProjectSlug:
     Type: String
     MinLength: 3
@@ -47,6 +52,7 @@ Parameters:
     Description: Preapproved dedicated EC2 SSM instance role permissions boundary
     AllowedPattern: '^arn:aws:iam::[0-9]{12}:policy/appfactory-staging-ssm-instance-boundary$'
 Conditions:
+  IsEphemeral: !Equals [!Ref HostLifecycle, ephemeral]
   IsBurstableT3: !Equals [!Ref InstanceType, t3.small]
 Resources:
   StagingSecurityGroup:
@@ -108,6 +114,7 @@ Resources:
         - !Ref StagingInstanceRole
 
   StagingExpiryRole:
+    Condition: IsEphemeral
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub '${ProjectSlug}-${Environment}-ttl-scheduler'
@@ -137,6 +144,7 @@ Resources:
           Value: !Ref Environment
 
   StagingExpirySchedule:
+    Condition: IsEphemeral
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: !Sub '${ProjectSlug}-${Environment}-ttl'
@@ -172,7 +180,7 @@ Resources:
             VolumeSize: !Ref RootVolumeGiB
             VolumeType: gp3
             Encrypted: true
-            DeleteOnTermination: true
+            DeleteOnTermination: !If [IsEphemeral, true, false]
       NetworkInterfaces:
         - DeviceIndex: '0'
           AssociatePublicIpAddress: true
@@ -206,7 +214,10 @@ Resources:
           Value: 'true'
 
 Outputs:
+  HostLifecycle:
+    Value: !Ref HostLifecycle
   StagingExpiresAtUtc:
+    Condition: IsEphemeral
     Value: !Ref ExpiresAtUtc
     Description: Mandatory reviewed TTL which triggers stack deletion
   StagingInstanceId:
