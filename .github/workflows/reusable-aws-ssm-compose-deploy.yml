@@ -3,6 +3,10 @@ name: Reusable AWS EC2/SSM Docker Compose deployment (Atelier pattern)
 on:
   workflow_call:
     inputs:
+      deployment_mode:
+        description: Ephemeral tests or persistent production host using installed IAM scope
+        type: string
+        default: ephemeral
       appfactory_ref:
         description: Pinned reviewed AppFactory commit
         type: string
@@ -74,8 +78,10 @@ jobs:
           ROLE: ${{ inputs.deploy_role_arn }}
           CFN_ROLE: ${{ inputs.cloudformation_role_arn }}
           PARAMETER: ${{ inputs.runtime_parameter }}
+          MODE: ${{ inputs.deployment_mode }}
         run: |
           set -euo pipefail
+          [[ "$MODE" == ephemeral || "$MODE" == persistent ]]
           [[ "$SOURCE" =~ ^[a-f0-9]{40}$ ]] && [[ "$(git rev-parse HEAD)" == "$SOURCE" ]]
           [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{2,23}$ ]]
           [[ "$ACCOUNT" =~ ^[0-9]{12}$ ]] && [[ "$REGION" == eu-west-3 ]]
@@ -114,6 +120,7 @@ jobs:
         shell: bash
         env:
           RUNTIME_PARAMETER: ${{ inputs.runtime_parameter }}
+          DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
         run: |
           set -euo pipefail
           umask 077
@@ -131,7 +138,18 @@ jobs:
           required=['DEEPSEEK_API_KEY','FRONTEND_API_KEY','POSTGRES_PASSWORD','JWT_SECRET']
           assert all(vals.get(k) for k in required), 'required staging secrets missing'
           assert len(vals['JWT_SECRET'])>=32, 'JWT_SECRET too short'
-          assert vals.get('CAMPAY_ENV')=='DEMO' and vals.get('EMAIL_ENABLED','false').lower()=='false'
+          if os.environ['DEPLOYMENT_MODE']=='ephemeral':
+              assert vals.get('CAMPAY_ENV')=='DEMO' and vals.get('EMAIL_ENABLED','false').lower()=='false'
+          else:
+              from urllib.parse import urlparse
+              origin=vals.get('FRONTEND_URL','')
+              assert urlparse(origin).scheme=='https' and urlparse(origin).hostname not in (None,'localhost','127.0.0.1')
+              assert vals.get('ALLOWED_ORIGINS')==origin
+              assert vals.get('PRECIS_ENV')=='production'
+              if vals.get('EMAIL_ENABLED','false').lower()=='true':
+                  assert vals.get('SMTP_USER') and vals.get('SMTP_PASSWORD')
+              if vals.get('CAMPAY_ENV')=='PROD':
+                  assert all(vals.get(k) for k in ('CAMPAY_USERNAME','CAMPAY_PASSWORD','CAMPAY_WEBHOOK_KEY'))
           assert vals.get('PRECIS_ENV') in ('staging','production')
           print('Runtime SecureString config found and validated without printing secrets')
           PY
@@ -173,7 +191,7 @@ jobs:
             --role-arn "$CFN_ROLE" \
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides \
-              ProjectSlug="$PROJECT" Environment=staging InstanceType=m7i-flex.large \
+              ProjectSlug="$PROJECT" Environment=staging HostLifecycle=${{ inputs.deployment_mode }} InstanceType=m7i-flex.large \
               RootVolumeGiB=40 VpcId="$APPFACTORY_VPC" SubnetId="$APPFACTORY_SUBNET" \
               AmiId="$APPFACTORY_AMI" ExpiresAtUtc="$EXPIRY" \
               InstanceRoleBoundaryArn="arn:aws:iam::${ACCOUNT}:policy/appfactory-staging-ssm-instance-boundary" \
@@ -230,7 +248,7 @@ jobs:
               "if [ ! -d /opt/appfactory/$PROJECT/repo/.git ]; then git clone --no-checkout https://github.com/$SOURCE_REPO.git /opt/appfactory/$PROJECT/repo; fi",
               "git -C /opt/appfactory/$PROJECT/repo fetch --depth 1 origin $SOURCE",
               "git -C /opt/appfactory/$PROJECT/repo checkout --force $SOURCE",
-              "bash /opt/appfactory/$PROJECT/repo/scripts/staging/aws-ssm-compose.sh"
+              "APPFACTORY_HOST_LIFECYCLE=${{ inputs.deployment_mode }} bash /opt/appfactory/$PROJECT/repo/scripts/staging/aws-ssm-compose.sh"
             ]
           }
           EOF
@@ -257,7 +275,8 @@ jobs:
           TARGET: ${{ steps.target.outputs.instance_id }}
         run: |
           {
-            echo '### AppFactory private staging — EC2 + SSM deployed'
+            echo '### AppFactory host deployed — internal health only'
+            echo 'Host lifecycle: ${{ inputs.deployment_mode }}. Historical staging IAM names retained for compatibility.'
             echo "- AWS account: ${{ inputs.account_id }} / ${{ inputs.region }}"
             echo "- Dedicated CloudFormation stack: ${{ inputs.stack_name }}"
             echo "- SSM host: $TARGET"
