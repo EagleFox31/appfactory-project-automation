@@ -50,6 +50,6 @@ test('lifecycle and costs remain explicitly bounded',()=>{
   assert.match(wf,/get-account-plan-state/);
   assert.match(wf,/environment: staging/);
   assert.match(template,/AWS::Scheduler::Schedule/);
-  assert.match(template,/DeleteOnTermination: true/);
+  assert.match(template,/DeleteOnTermination: !If \[IsEphemeral, true, false\]/);
   assert.doesNotMatch(wf,/delete-stack.*atelier|StackName=atelier/);
 });

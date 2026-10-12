@@ -29,7 +29,7 @@ path = Path("infra/aws/blueprints/reusable-compose-staging-host.yml")
 template = yaml.load(path.read_text(encoding="utf8"), Loader=UniqueLoader)
 assert isinstance(template, dict)
 assert set(template) == {"AWSTemplateFormatVersion", "Description", "Parameters", "Conditions", "Resources", "Outputs"}
-assert len(template["Parameters"]) == 10, list(template["Parameters"])
+assert len(template["Parameters"]) == 11, list(template["Parameters"])
 assert set(template["Resources"]) == {
     "StagingSecurityGroup", "StagingInstanceRole", "StagingInstanceProfile",
     "StagingExpiryRole", "StagingExpirySchedule", "StagingInstance"
@@ -37,6 +37,10 @@ assert set(template["Resources"]) == {
 assert template["Resources"]["StagingInstance"]["Properties"]["CreditSpecification"] == ["IsBurstableT3", {"CPUCredits": "standard"}, "AWS::NoValue"]
 assert template["Resources"]["StagingExpirySchedule"]["Properties"]["ActionAfterCompletion"] == "DELETE"
 assert template["Resources"]["StagingInstance"]["Properties"]["BlockDeviceMappings"][0]["Ebs"]["Encrypted"] is True
+assert template["Conditions"]["IsEphemeral"] == ["HostLifecycle", "ephemeral"]
+assert template["Resources"]["StagingExpirySchedule"]["Condition"] == "IsEphemeral"
+assert template["Resources"]["StagingExpiryRole"]["Condition"] == "IsEphemeral"
+assert template["Resources"]["StagingInstance"]["Properties"]["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] == ["IsEphemeral", True, False]
 bootstrap = Path("infra/aws/blueprints/precis-staging-oidc-cfn-bootstrap.yml")
 iam = yaml.load(bootstrap.read_text(encoding="utf8"), Loader=UniqueLoader)
 assert set(iam) == {"AWSTemplateFormatVersion", "Description", "Parameters", "Resources", "Outputs"}
