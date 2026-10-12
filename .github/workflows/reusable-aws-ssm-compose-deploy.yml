@@ -178,11 +178,34 @@ jobs:
           STACK: ${{ inputs.stack_name }}
           CFN_ROLE: ${{ inputs.cloudformation_role_arn }}
           PROJECT: ${{ inputs.project_slug }}
+          DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
         shell: bash
         run: |
           set -euo pipefail
           # This run has no authority to alter Atelier production: stack and role differ.
           # CloudFormation is idempotent; repeated deploys converge without new instances.
+          # Reuse completed persistent compute for application-only releases.
+          if [[ "$DEPLOYMENT_MODE" == persistent ]]; then
+            if aws cloudformation describe-stacks --stack-name "$STACK" > "$RUNNER_TEMP/precis-existing-stack.json" 2> "$RUNNER_TEMP/precis-stack-read-error"; then
+              python - <<'PY'
+          import json,os
+          stack=json.load(open(os.environ['RUNNER_TEMP']+'/precis-existing-stack.json'))['Stacks'][0]
+          assert stack['StackStatus'] in ('CREATE_COMPLETE','UPDATE_COMPLETE'), 'existing host stack not ready'
+          params={p['ParameterKey']:p.get('ParameterValue') for p in stack.get('Parameters',[])}
+          assert params.get('ProjectSlug')==os.environ['PROJECT']
+          assert params.get('Environment')=='staging'
+          assert params.get('HostLifecycle')=='persistent'
+          outputs={p['OutputKey']:p['OutputValue'] for p in stack.get('Outputs',[])}
+          assert outputs.get('HostLifecycle')=='persistent'
+          assert outputs.get('StagingInstanceId','').startswith('i-')
+          print('Existing permanent host reused; application rollout does not alter compute.')
+          PY
+              exit 0
+            fi
+            if ! grep -q 'does not exist' "$RUNNER_TEMP/precis-stack-read-error"; then
+              echo "::error::Cannot inspect existing project host stack"; exit 1
+            fi
+          fi
           EXPIRY="$(date -u -d '+167 hours' '+%Y-%m-%dT%H:%M:%S')"
           aws cloudformation deploy \
             --region ${{ inputs.region }} \
