@@ -54,5 +54,8 @@ test('CloudFormation adds a bounded one-shot stack cleanup and disables surplus 
   assert.match(t,/Resource: !Sub 'arn:\$\{AWS::Partition\}:cloudformation:\$\{AWS::Region\}:\$\{AWS::AccountId\}:stack\/\$\{AWS::StackName\}\/\*'/);
   assert.match(t,/PermissionsBoundary: !Ref TtlSchedulerRoleBoundaryArn/);
   assert.match(t,/CPUCredits: standard/);
-  assert.match(t,/DeleteOnTermination: true/);
+  assert.match(t,/DeleteOnTermination: !If \[IsEphemeral, true, false\]/);
+  assert.match(t,/IsEphemeral: !Equals \[!Ref HostLifecycle, ephemeral\]/);
+  assert.match(t,/StagingExpirySchedule:\n    Condition: IsEphemeral/);
+  assert.match(t,/StagingExpiryRole:\n    Condition: IsEphemeral/);
 });
