@@ -3,6 +3,9 @@ name: Reusable AWS staging Free Plan/credits preflight (read only)
 on:
   workflow_call:
     inputs:
+      github_environment:
+        type: string
+        default: staging
       appfactory_ref:
         required: true
         type: string
@@ -20,7 +23,7 @@ jobs:
   free-plan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: staging
+    environment: ${{ inputs.github_environment }}
     permissions:
       contents: read
       id-token: write
@@ -31,6 +34,7 @@ jobs:
           PINNED_REF: ${{ inputs.appfactory_ref }}
         run: |
           set -euo pipefail
+          [[ '${{ inputs.github_environment }}' == staging || '${{ inputs.github_environment }}' == production ]] || exit 1
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || {
             echo "::error::Only manual dispatch can request AWS staging preflight"
             exit 1

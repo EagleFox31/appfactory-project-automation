@@ -3,6 +3,18 @@ name: Reusable AWS EC2/SSM Docker Compose deployment (Atelier pattern)
 on:
   workflow_call:
     inputs:
+      github_environment:
+        description: Logical GitHub deployment target; legacy AWS resource identifiers remain unchanged
+        type: string
+        default: staging
+      existing_instance_id:
+        description: Required for production; production never provisions a replacement host
+        type: string
+        default: ""
+      public_origin:
+        description: Required production HTTPS origin, checked after rollout
+        type: string
+        default: ""
       deployment_mode:
         description: Ephemeral tests or persistent production host using installed IAM scope
         type: string
@@ -43,13 +55,13 @@ permissions:
 
 jobs:
   deploy:
-    name: Provision + deploy + verify dedicated Compose staging host
+    name: Deploy and verify dedicated Compose host
     if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 80
-    environment: staging
+    environment: ${{ inputs.github_environment }}
     concurrency:
-      group: appfactory-aws-ssm-${{ github.repository }}-staging
+      group: appfactory-aws-ssm-${{ github.repository }}-${{ inputs.github_environment }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -67,6 +79,14 @@ jobs:
           ref: ${{ inputs.appfactory_ref }}
           path: .appfactory
           persist-credentials: false
+      - name: Validate deployment target before any AWS authentication
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.github_environment }}
+          LIFECYCLE: ${{ inputs.deployment_mode }}
+          INSTANCE_ID: ${{ inputs.existing_instance_id }}
+          PUBLIC_ORIGIN: ${{ inputs.public_origin }}
+        run: |
+          node --input-type=module -e 'import {validateDeploymentEnvironment} from "./.appfactory/scripts/deployment/deployment-environment.mjs"; validateDeploymentEnvironment({environment:process.env.DEPLOY_ENVIRONMENT,lifecycle:process.env.LIFECYCLE,instanceId:process.env.INSTANCE_ID,publicOrigin:process.env.PUBLIC_ORIGIN});'
       - name: Reject incorrect project scope before assuming AWS role
         shell: bash
         env:
@@ -154,6 +174,7 @@ jobs:
           print('Runtime SecureString config found and validated without printing secrets')
           PY
       - name: Discover eligible network and x86 AMI without console intervention
+        if: inputs.github_environment != 'production'
         shell: bash
         run: |
           set -euo pipefail
@@ -206,6 +227,9 @@ jobs:
               echo "::error::Cannot inspect existing project host stack"; exit 1
             fi
           fi
+          if [[ '${{ inputs.github_environment }}' == production ]]; then
+            echo '::error::Production requires the existing persistent stack; provisioning refused'; exit 1
+          fi
           EXPIRY="$(date -u -d '+167 hours' '+%Y-%m-%dT%H:%M:%S')"
           aws cloudformation deploy \
             --region ${{ inputs.region }} \
@@ -230,6 +254,9 @@ jobs:
           ID="$(aws cloudformation describe-stacks --stack-name "$STACK" \
             --query "Stacks[0].Outputs[?OutputKey=='StagingInstanceId'].OutputValue | [0]" --output text)"
           [[ "$ID" =~ ^i-[a-f0-9]{8}([a-f0-9]{9})?$ ]] || exit 1
+          if [[ '${{ inputs.github_environment }}' == production ]]; then
+            [[ "$ID" == '${{ inputs.existing_instance_id }}' ]] || { echo '::error::Production instance identity mismatch'; exit 1; }
+          fi
           echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
       - name: Wait for SSM availability (no SSH credentials)
         shell: bash
@@ -292,18 +319,25 @@ jobs:
             sleep 15
           done
           echo "::error::AppFactory rollout did not finish within 45 minutes"; exit 1
+      - name: Verify public production health after SSM rollout
+        if: inputs.github_environment == 'production'
+        env:
+          PUBLIC_ORIGIN: ${{ inputs.public_origin }}
+        run: |
+          curl --fail --silent --show-error --retry 3 --max-time 30 "$PUBLIC_ORIGIN/health" -o /dev/null
+          curl --fail --silent --show-error --retry 3 --max-time 30 "$PUBLIC_ORIGIN/home" -o /dev/null
       - name: Report honest deployment state
         shell: bash
         env:
           TARGET: ${{ steps.target.outputs.instance_id }}
         run: |
           {
-            echo '### AppFactory host deployed — internal health only'
+            echo '### AppFactory host deployed — ${{ inputs.github_environment }}'
             echo 'Host lifecycle: ${{ inputs.deployment_mode }}. Historical staging IAM names retained for compatibility.'
             echo "- AWS account: ${{ inputs.account_id }} / ${{ inputs.region }}"
             echo "- Dedicated CloudFormation stack: ${{ inputs.stack_name }}"
             echo "- SSM host: $TARGET"
             echo "- Commit: ${{ inputs.source_sha }}"
             echo '- Internal Compose health checked on host. No public ingress opened.'
-            echo '- Public URL requires a separately approved Cloudflare tunnel or HTTPS entrypoint.'
+            echo 'Logical target: ${{ inputs.github_environment }}. Production public health is verified above.'
           } >> "$GITHUB_STEP_SUMMARY"

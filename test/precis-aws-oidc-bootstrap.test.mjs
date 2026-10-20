@@ -6,7 +6,7 @@ const yml=readFileSync(new URL('../infra/aws/blueprints/precis-staging-oidc-cfn-
 test('Précis bootstrap reuses Atelier OIDC/CFN design without touching Atelier resources',()=>{
   assert.match(yml,/token\.actions\.githubusercontent\.com/);
   assert.match(yml,/sts:AssumeRoleWithWebIdentity/);
-  assert.match(yml,/repo:EagleFox31@86088743\/Pr-cis-Translation@1411758415:environment:staging/);
+  assert.match(yml,/repo:EagleFox31@86088743\/Pr-cis-Translation@1411758415:environment:production/);
   assert.match(yml,/Service: cloudformation\.amazonaws\.com/);
   assert.match(yml,/precis-translation-staging-github-deployer/);
   assert.match(yml,/precis-translation-staging-cfn-execution/);

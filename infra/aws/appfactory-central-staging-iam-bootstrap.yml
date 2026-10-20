@@ -270,7 +270,7 @@ Resources:
             Condition:
               StringEquals:
                 'token.actions.githubusercontent.com:aud': sts.amazonaws.com
-                'token.actions.githubusercontent.com:sub': 'repo:EagleFox31@86088743/Pr-cis-Translation@1411758415:environment:staging'
+                'token.actions.githubusercontent.com:sub': 'repo:EagleFox31@86088743/Pr-cis-Translation@1411758415:environment:production'
       Policies:
         - PolicyName: ExactStagingCfnAndSsm
           PolicyDocument:

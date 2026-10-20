@@ -513,3 +513,14 @@ Concurrency boundaries must follow the scope of the state being mutated. Idempot
 **Derived principle / standard change**
 
 RAIDER concurrency reviews must inventory each mutable resource, assign a serialization scope matching that resource, and prove that scheduler queue semantics cannot silently drop independent work while protecting shared critical sections.
+
+
+### LESSON-2026-012 — Runtime promotion must reach the delivery control plane
+
+Précis was serving its production domain with a persistent host and production
+application settings, while the reusable delivery workflow and consumer metadata
+still recorded staging. Production runtime status and GitHub deployment status
+had drifted. Environment selection now belongs to reusable workflow inputs;
+production requires an exact existing persistent instance and HTTPS verification.
+Tests cover invalid mode/lifecycle/host/origin combinations. Historical stateful
+resource identifiers remain stable, and the OIDC trust migration is explicit.

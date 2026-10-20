@@ -7,7 +7,7 @@ const template=readFileSync(new URL('../infra/aws/blueprints/reusable-compose-st
 
 test('Atelier OIDC/CloudFormation/SSM delivery flow now exists in AppFactory core',()=>{
   for (const token of [
-    'workflow_call:', 'environment: staging',
+    'workflow_call:', 'environment: ${{ inputs.github_environment }}',
     'aws-actions/configure-aws-credentials@v4',
     'aws cloudformation validate-template',
     'aws cloudformation deploy',
@@ -48,7 +48,7 @@ test('lifecycle and costs remain explicitly bounded',()=>{
   assert.match(wf,/ExpiresAtUtc/);
   assert.match(wf,/InstanceType=m7i-flex.large/);
   assert.match(wf,/get-account-plan-state/);
-  assert.match(wf,/environment: staging/);
+  assert.match(wf,/environment: \$\{\{ inputs\.github_environment \}\}/);
   assert.match(template,/AWS::Scheduler::Schedule/);
   assert.match(template,/DeleteOnTermination: !If \[IsEphemeral, true, false\]/);
   assert.doesNotMatch(wf,/delete-stack.*atelier|StackName=atelier/);
