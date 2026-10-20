@@ -7,7 +7,7 @@ const script=readFileSync(new URL('../scripts/deployment/verify-aws-free-plan.mj
 
 test('Free Plan preflight requires manual protected staging and pinned source',()=>{
   assert.match(workflow,/workflow_call:/);
-  assert.match(workflow,/environment: staging/);
+  assert.match(workflow,/environment: \$\{\{ inputs\.github_environment \}\}/);
   assert.match(workflow,/id-token: write/);
   assert.match(workflow,/GITHUB_EVENT_NAME/);
   assert.match(workflow,/workflow_dispatch/);
