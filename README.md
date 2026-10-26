@@ -1,4 +1,45 @@
+<!-- appfactory:hero:start -->
+<div align="center">
+
 # AppFactory Project Automation
+
+### One project workflow. Reused across repositories.
+
+**A reusable GitHub Action and versioned workflows for Project lifecycle, backlog imports, governance and scoped release/CI utilities.**
+
+[![Lifecycle: active](https://img.shields.io/badge/Lifecycle-active-0969da)](#implementation-status)
+[![Engineering: RAIDER](https://img.shields.io/badge/Engineering-RAIDER-263238)](#security-boundary)
+
+[**Overview**](#what-it-does) · [**Maturity**](#implementation-status) · [**Quick start**](#project-automation-quick-start) · [**Capabilities**](#what-lives-in-this-repository) · [**Lifecycle**](#workflow-at-a-glance) · [**OIDC**](#security-boundary) · [**Docs**](docs/project-github-app-user-onboarding.md)
+
+</div>
+
+---
+<!-- appfactory:hero:end -->
+
+## What it does
+
+A product owner configures project metadata, adopts a pinned reusable workflow and authorizes the broker once. Issue and PR events reconcile board state without leaving a long-lived personal access token in each repository.
+
+## Implementation status
+
+**production.** A successful workflow run does not by itself prove board field changes when a job was skipped; broker authorization, configured scopes and repository ownership still determine live behavior.
+
+**Implementation evidence:** [Project Action](action.yml) · [Reusable auth workflow](.github/workflows/reusable-project-automation.yml) · [Broker trust model](docs/project-github-app-user-onboarding.md).
+
+## Security boundary
+
+For the recommended owner-triggered path, the OAuth/OIDC broker provides short-lived authorization to the **reviewed, exact reusable workflow identity**; consumers do not copy a `PROJECT_TOKEN` into every repository. The legacy token option is separate and opt-in. [Broker onboarding](docs/project-github-app-user-onboarding.md) · [Reusable workflow](.github/workflows/reusable-project-automation.yml).
+
+## Maintainer's orientation
+
+```text
+Issue/PR events -> consumer config -> pinned reusable workflow
+                                 -> OIDC broker authorization
+                                 -> GitHub Project reconciliation
+```
+
+**Do not equate a green job with a changed board field.** Verify the issue, any skipped job branches and the final GitHub Project Status value. Existing source and setup sections below remain the authoritative integration guide.
 
 [![CI](https://github.com/EagleFox31/appfactory-project-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/EagleFox31/appfactory-project-automation/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/EagleFox31/appfactory-project-automation?display_name=tag)](https://github.com/EagleFox31/appfactory-project-automation/releases/latest)
