@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readActionInput } from './action-inputs.mjs';
 import { resolveProjectToken } from './project-auth.mjs';
+import { addProjectItemWithReconciliation } from './github/project-item-reconciliation.mjs';
 import {
   executeRepositoryGovernance,
   formatRepositoryGovernanceExecution,
@@ -476,9 +477,6 @@ async function loadProjectItemMap(projectId) {
 }
 
 async function ensureProjectItem(projectId, contentId, itemMap = null) {
-  const existingItemId = itemMap?.get(contentId) ?? await findProjectItem(projectId, contentId);
-  if (existingItemId) return { itemId: existingItemId, added: false };
-
   const mutation = `
     mutation AddProjectItem($projectId: ID!, $contentId: ID!) {
       addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
@@ -487,11 +485,16 @@ async function ensureProjectItem(projectId, contentId, itemMap = null) {
     }
   `;
 
-  const data = await graphql(mutation, { projectId, contentId });
-  const itemId = data.addProjectV2ItemById?.item?.id;
-  if (!itemId) throw new Error('GitHub did not return the newly added Project item id.');
-  itemMap?.set(contentId, itemId);
-  return { itemId, added: true };
+  const result = await addProjectItemWithReconciliation({
+    findExisting: () => itemMap?.get(contentId) ?? findProjectItem(projectId, contentId),
+    addItem: async () => {
+      const data = await graphql(mutation, { projectId, contentId });
+      return data.addProjectV2ItemById?.item?.id;
+    }
+  });
+  // Cache the converged remote item, not an assumed successful mutation.
+  itemMap?.set(contentId, result.itemId);
+  return result;
 }
 
 async function setSingleSelect(project, itemId, configuredFieldName, optionName) {

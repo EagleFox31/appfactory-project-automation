@@ -524,3 +524,35 @@ had drifted. Environment selection now belongs to reusable workflow inputs;
 production requires an exact existing persistent instance and HTTPS verification.
 Tests cover invalid mode/lifecycle/host/origin combinations. Historical stateful
 resource identifiers remain stable, and the OIDC trust migration is explicit.
+
+### LESSON-2026-016 — A transient Project V2 conflict requires state inspection before retry
+
+- **Date:** 2026-10-26
+- **Category:** automation · reliability · idempotence
+- **Status:** prevention-proposed (pending CI and release)
+- **Related:** EagleFox31/agentshield-ai Project #12, AppFactory Project Automation issue #136
+
+**Context / incident**
+
+An initial burst of five GitHub Issues triggered the previously pinned reusable workflow. Repository-wide concurrency dropped pending independent issue runs. During first-project bootstrap GitHub also returned `Your attempt to move this item created a temporary conflict.`. A later successful event synchronized only the issue it handled, leaving the board incomplete until the missing items were explicitly reconciled.
+
+**Root cause**
+
+GitHub Project V2 mutations can report temporary conflicts while the server is reconciling project items. Retrying a remote mutation blindly can create duplicates or misreport whether an item already exists. A repository-wide concurrency group also collapses unrelated Issue events; separately scoped per-item lanes (already implemented on current main) are required.
+
+**Resolution / prevention (proposed in this PR)**
+
+- Put transient item-conflict handling in a **shared, repository-agnostic** helper.
+- Before every retry, read current Project state, including after bounded backoff.
+- Retry **only known temporary item conflicts**; fail immediately for permissions or other permanent errors.
+- Stop after a finite retry budget, surface an actionable failure and allow an idempotent rerun.
+- Unit-test successful ordinary creation, remote-committed conflict, delayed success, hard failure and retry exhaustion.
+- Preserve current main's independent issue concurrency and serialized project bootstrap. Do not repoint the broker-pinned consumer runtime until its OIDC allowlist is explicitly promoted and a multi-consumer validation has passed.
+
+**Generalized lesson**
+
+A successful workflow event is not proof that **the entire desired backlog state** has converged. Reliable event-driven automation needs both event isolation and an explicit reconciliation path, with read-before-retry for potentially committed remote mutations.
+
+**RAIDER impact**
+
+Reusable + agnostic recovery; idempotent reconciliation; durable fail-closed behavior; brownfield recovery without recreating Projects. Production rollout requires a separately reviewed immutable runtime promotion.
