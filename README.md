@@ -23,7 +23,7 @@ A product owner configures project metadata, adopts a pinned reusable workflow a
 
 ## Implementation status
 
-**active.** A successful workflow run does not by itself prove board field changes when a job was skipped; broker authorization, configured scopes and repository ownership still determine live behavior.
+**production.** A successful workflow run does not by itself prove board field changes when a job was skipped; broker authorization, configured scopes and repository ownership still determine live behavior.
 
 **Implementation evidence:** [Project Action](action.yml) · [Reusable auth workflow](.github/workflows/reusable-project-automation.yml) · [Broker trust model](docs/project-github-app-user-onboarding.md).
 
