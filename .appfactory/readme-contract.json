@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "AppFactory Project Automation",
-  "stage": "active",
+  "stage": "production",
   "tagline": "A reusable GitHub Action and versioned workflows for Project lifecycle, backlog imports, governance and scoped release/CI utilities.",
   "problem": "Teams lose status accuracy when issue metadata, PR reviews and GitHub Projects are managed separately, or when ad-hoc automation is copied per repository.",
   "scenario": "A product owner configures project metadata, adopts a pinned reusable workflow and authorizes the broker once. Issue and PR events reconcile board state without leaving a long-lived personal access token in each repository.",
