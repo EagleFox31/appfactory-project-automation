@@ -52,7 +52,7 @@
   "requiredHeadings": [
     "What it does",
     "Implementation status",
-    "Engineering boundary"
+    "Security boundary"
   ],
   "requiredTerms": [
     "Projects",
@@ -83,7 +83,7 @@
         "label": "Engineering",
         "value": "RAIDER",
         "color": "263238",
-        "href": "#engineering-boundary"
+        "href": "#security-boundary"
       }
     ],
     "navigation": [
