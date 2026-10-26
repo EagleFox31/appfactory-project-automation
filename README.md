@@ -8,7 +8,7 @@
 **A reusable GitHub Action and versioned workflows for Project lifecycle, backlog imports, governance and scoped release/CI utilities.**
 
 [![Lifecycle: active](https://img.shields.io/badge/Lifecycle-active-0969da)](#implementation-status)
-[![Engineering: RAIDER](https://img.shields.io/badge/Engineering-RAIDER-263238)](#engineering-boundary)
+[![Engineering: RAIDER](https://img.shields.io/badge/Engineering-RAIDER-263238)](#security-boundary)
 
 [**Overview**](#what-it-does) · [**Maturity**](#implementation-status) · [**Quick start**](#project-automation-quick-start) · [**Capabilities**](#what-lives-in-this-repository) · [**Lifecycle**](#workflow-at-a-glance) · [**OIDC**](#security-boundary) · [**Docs**](docs/project-github-app-user-onboarding.md)
 
