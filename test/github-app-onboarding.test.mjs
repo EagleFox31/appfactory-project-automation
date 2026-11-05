@@ -18,7 +18,7 @@ test('reusable governance supports explicit PAT and GitHub App authentication pr
   assert.match(reusable, /^      app_client_id:/m);
   assert.match(reusable, /^      governance_token:[\s\S]*?required: false/m);
   assert.match(reusable, /^      app_private_key:[\s\S]*?required: false/m);
-  assert.match(reusable, /Expected token or github-app/);
+  assert.match(reusable, /Expected token, github-app or broker-app/);
 });
 
 test('GitHub App token is short-lived, least-privilege and repository-scoped', () => {
@@ -26,7 +26,7 @@ test('GitHub App token is short-lived, least-privilege and repository-scoped', (
   assert.match(reusable, /permission-administration: write/);
   assert.match(
     reusable,
-    /governance-administration-verified: \$\{\{ inputs\.authentication == 'github-app' \}\}/
+    /governance-administration-verified: \$\{\{ inputs\.authentication == 'github-app' \|\| inputs\.authentication == 'broker-app' \}\}/
   );
   assert.doesNotMatch(reusable, /^          owner:/m);
   assert.doesNotMatch(reusable, /^          repositories:/m);

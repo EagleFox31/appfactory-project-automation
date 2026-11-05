@@ -83,12 +83,32 @@ Reinstalling the same App on the repository does not recreate AppFactory-managed
 
 Rotate a private key by generating the replacement in the App settings, updating `APPFACTORY_APP_PRIVATE_KEY`, validating one workflow run, and only then deleting the old key. GitHub App installation tokens expire after one hour and the token action revokes them at job completion.
 
+## Brokered installation token (no key in the repository)
+
+`authentication: broker-app` keeps the GitHub App private key out of every consumer repository. The governance job proves its identity with a GitHub Actions OIDC token (audience `appfactory-governance`) and the AppFactory governance broker (`POST /v1/github/installation-token` on `appfactory-api`) answers with a one-hour installation token restricted to the calling repository and to `Administration: write`.
+
+Consumer setup:
+
+1. Install the AppFactory GitHub App on the repository (same **Administration: Read and write** permission as above). No private key is downloaded.
+2. In the repository, open **Settings → Secrets and variables → Actions → Variables** and create `APPFACTORY_GOVERNANCE_BROKER_URL` with the broker endpoint (HTTPS only). It is a variable, not a secret: the URL is not confidential.
+3. Use [`examples/repository-governance-broker-app.yml`](../examples/repository-governance-broker-app.yml). The calling workflow must grant `permissions: id-token: write` so the reusable workflow can request the OIDC proof.
+4. Run `plan` once, then switch to `apply`.
+
+Trust boundaries enforced by the broker, not by the consumer:
+
+- the OIDC token must come from an allowed account (`repository_owner`) and from this reusable governance workflow pinned by commit SHA (`job_workflow_ref`); forks, other workflows and unpinned refs are refused;
+- the target repository is the verified `repository` claim; the request body is ignored;
+- the App must already be installed on that repository, otherwise the broker returns an actionable `GITHUB_APP_NOT_INSTALLED` error.
+
+The reusable workflow masks both the OIDC proof and the installation token, checks that the token was issued for `github.repository`, passes it to the unchanged `governance-token` input and revokes it with `DELETE /installation/token` when the job ends, even on failure. No secret is added to the consumer repository, so there is nothing to rotate there.
+
 ## Authentication compatibility contract
 
-The reusable workflow supports two providers:
+The reusable workflow supports three providers:
 
 - `authentication: token` with `secrets.governance_token` — backward-compatible PAT path;
-- `authentication: github-app` with `inputs.app_client_id` and `secrets.app_private_key` — zero-PAT governance path.
+- `authentication: github-app` with `inputs.app_client_id` and `secrets.app_private_key` — zero-PAT governance path with a repository-held key;
+- `authentication: broker-app` with `inputs.broker_url` — zero-PAT, zero-key governance path backed by the AppFactory governance broker.
 
 Exactly one provider is selected explicitly. Missing or mixed assumptions fail before repository checkout or governance execution. The Action's public `governance-token` input remains unchanged, and no core governance module imports GitHub App-specific logic.
 

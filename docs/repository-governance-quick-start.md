@@ -25,7 +25,7 @@ The tested copy is available at [`examples/repository-governance-config.json`](.
 
 ### 2. Create the dedicated secret
 
-The default setup below preserves the existing fine-grained PAT path. For short-lived, zero-PAT authentication, follow [GitHub App onboarding](github-app-onboarding.md) and use the dedicated GitHub App workflow example instead.
+The default setup below preserves the existing fine-grained PAT path. For short-lived, zero-PAT authentication, follow [GitHub App onboarding](github-app-onboarding.md) and use the dedicated GitHub App workflow example instead. To keep even the App private key out of the repository, use `authentication: broker-app` with the `APPFACTORY_GOVERNANCE_BROKER_URL` variable and [`examples/repository-governance-broker-app.yml`](../examples/repository-governance-broker-app.yml).
 
 Create a fine-grained GitHub token for the account or organization that owns the target repository:
 
@@ -166,6 +166,8 @@ Confirm that the secret is named exactly `APPFACTORY_GOVERNANCE_TOKEN` and that 
 Generate a replacement fine-grained token, update the Actions secret and rerun `plan`. AppFactory never prints the submitted token.
 
 For GitHub App authentication, confirm that the App is still installed on the repository, `APPFACTORY_APP_CLIENT_ID` matches the App, and `APPFACTORY_APP_PRIVATE_KEY` contains an active complete PEM key.
+
+For brokered authentication (`broker-app`), the failing step prints the broker HTTP status and error code: `GITHUB_APP_NOT_INSTALLED` means the App must be installed on the repository, `GOVERNANCE_OWNER_FORBIDDEN` or `GOVERNANCE_WORKFLOW_FORBIDDEN` mean the broker allowlist does not include this account or this pinned workflow revision, and `GOVERNANCE_BROKER_NOT_CONFIGURED` means the broker itself is not yet configured. An `OIDC unavailable` error means the calling workflow lacks `permissions: id-token: write`.
 
 ### Repository not visible
 
