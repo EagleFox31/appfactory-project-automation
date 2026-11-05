@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 import {
   assertVisualConfig, parseLocalBaseURL, routeURL,
-  evaluateLighthouse, visualGateSummary, atomicEvidenceOutput
+  evaluateLighthouse, visualGateSummary, atomicEvidenceOutput, normaliseCtaTarget
 } from "./contract.mjs";
 
 const requiredEnv = (key) => {
@@ -40,7 +40,7 @@ const passPage=async (page,route,scope)=>{
       styles.visibility!=="hidden"&&styles.display!=="none" };
   });
   if(!element.visible) {gate(scope+":cta",false,"Primary CTA is not visible");return;}
-  if(element.tag!=="A" || element.target!==route.expectedCtaHref) {
+  if(element.tag!=="A" || normaliseCtaTarget(element.target,route.path)!==route.expectedCtaHref) {
     gate(scope+":cta",false,"Primary CTA must be a link to the configured internal route");
     return;
   }
