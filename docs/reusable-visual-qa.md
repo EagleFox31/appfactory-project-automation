@@ -26,7 +26,7 @@ Typical values:
 | requireNoHorizontalOverflow | true | No unexpected scroll outside viewport |
 | requireNoExternalImages | true | Flag image network requests to other origins |
 
-All three security flags are compulsory in v1. A route must be a local pathname and have a required primary CTA selector and expected local `href`. For extra pages, add more routes with their own real primary CTA.
+All three security flags are compulsory in v1. A route must be a local pathname and have a required primary CTA selector and expected local `href` (a pathname such as `/app`, or a same-page section such as `/#contact` for one-page sites; the rendered anchor may then use `#contact` or `/#contact`). For extra pages, add more routes with their own real primary CTA.
 
 **Do not weaken the numbers to obtain a green result**. Lab performance is sensitive to runner conditions: document a reasoned, reviewed exception if the budget is inappropriate, and keep the numerical result visible.
 

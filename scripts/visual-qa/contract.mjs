@@ -4,6 +4,19 @@ import path from "node:path";
 const localPath = (x) => typeof x === "string" &&
   x.startsWith("/") && !x.startsWith("//") && !/[?#\\\u0000-\u001f]/.test(x) &&
   !x.split("/").some(s=>s==="."||s==="..") && x.length<=160;
+// Expected CTA href: a safe local path, optionally with a same-page fragment ("/#contact").
+const FRAGMENT=/^[A-Za-z0-9_-]{1,80}$/;
+export const splitCtaHref = (x) => {
+  if(typeof x!=="string") return null;
+  const i=x.indexOf("#");
+  const pathname=i<0?x:x.slice(0,i), fragment=i<0?"":x.slice(i+1);
+  if(!localPath(pathname)||(i>=0&&!FRAGMENT.test(fragment))) return null;
+  return {pathname,fragment};
+};
+const localCtaHref = (x) => splitCtaHref(x)!==null;
+// Anchor href as rendered, normalised against the route so "#contact" on "/" equals "/#contact".
+export const normaliseCtaTarget = (href,routePath) =>
+  typeof href==="string"&&href.startsWith("#")?routePath+href:href;
 const plain = x => x!==null && typeof x==="object" && !Array.isArray(x);
 const sameKeys = (obj,keys,label,errors) => {
   for(const key of Object.keys(obj)) if(!keys.includes(key)) errors.push(label+" unknown field: "+key);
@@ -29,7 +42,7 @@ export function validateVisualConfig(cfg) {
       seen.add(route.path);
       if(typeof route.primaryCtaSelector!=="string"||route.primaryCtaSelector.length<1||route.primaryCtaSelector.length>120)
         errors.push(label+".primaryCtaSelector required");
-      if(!localPath(route.expectedCtaHref)) errors.push(label+".expectedCtaHref must be a safe local path");
+      if(!localCtaHref(route.expectedCtaHref)) errors.push(label+".expectedCtaHref must be a safe local path, optionally with a same-page #fragment");
     });
   }
   if(!Array.isArray(cfg.viewports)||cfg.viewports.length!==2)

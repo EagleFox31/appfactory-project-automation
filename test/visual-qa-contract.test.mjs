@@ -6,8 +6,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   assertVisualConfig,validateVisualConfig,parseLocalBaseURL,routeURL,
-  evaluateLighthouse,visualGateSummary,atomicEvidenceOutput
-} from "../scripts/visual-qa/contract.mjs";
+  evaluateLighthouse,visualGateSummary,atomicEvidenceOutput,splitCtaHref,normaliseCtaTarget} from "../scripts/visual-qa/contract.mjs";
 
 const file="test/fixtures/visual-qa-site/config.json";
 const config=JSON.parse(fs.readFileSync(file,"utf8"));
@@ -37,6 +36,21 @@ test("unsafe routes, unknown settings, disabled security flags and wrong budgets
   assert.throws(()=>assertVisualConfig(invalid),/Invalid visual QA config/);
   const x=clone(config);x.viewports[1].name="desktop";
   assert.match(validateVisualConfig(x).join(" "),/unique desktop\/mobile/);
+});
+
+test("same-page fragment CTA is accepted for one-page sites, unsafe fragments are not",()=>{
+  const ok=clone(config);ok.routes[0].expectedCtaHref="/#contact";
+  assert.deepEqual(validateVisualConfig(ok),[]);
+  assert.deepEqual(splitCtaHref("/#contact"),{pathname:"/",fragment:"contact"});
+  assert.deepEqual(splitCtaHref("/app"),{pathname:"/app",fragment:""});
+  for(const bad of ["#contact","/#","/#a b","/#../x","//evil#x","/?q=1#x","/#"+"a".repeat(81)]){
+    const ko=clone(config);ko.routes[0].expectedCtaHref=bad;
+    assert.match(validateVisualConfig(ko).join(" "),/expectedCtaHref/,bad);
+  }
+  assert.equal(normaliseCtaTarget("#contact","/"),"/#contact");
+  assert.equal(normaliseCtaTarget("/#contact","/"),"/#contact");
+  assert.equal(normaliseCtaTarget("/app","/"),"/app");
+  assert.equal(normaliseCtaTarget(null,"/"),null);
 });
 
 test("browser target is restricted to an unprivileged localhost origin",()=>{
