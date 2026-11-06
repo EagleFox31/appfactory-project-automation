@@ -4,6 +4,19 @@
 reviewed contract, and uploads it to an **existing** Cloudflare Pages project with Direct Upload. Nothing is
 provisioned: the project, its custom domains and the DNS stay owned by the account administrator.
 
+## Position in AppFactory: an exception, not the canonical path
+
+The canonical way to put a Trigenys repository on Cloudflare Pages is the Git integration provisioned by
+`Trigenys/appfactory` (`POST /infrastructure/pages`, GitHub Actions OIDC, see its `docs/brownfield-pages.md`):
+Cloudflare credentials stay server-side in AppFactory, the Pages project is connected to the repository and no
+`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` exists in the product repository (decision recorded in issue #45).
+
+This workflow requires those two secrets in the consumer. Use it only when the Git integration is not possible for the
+repository (for example a host or organisation where the Cloudflare GitHub App cannot be installed, or an output that
+must be built by a pipeline Cloudflare cannot run), record that derogation in the consumer's ADR, and scope the token
+to "Cloudflare Pages - Edit" on a protected environment. `mode: plan` remains useful on its own: it builds and
+validates any static site without a secret, whichever publication path the repository uses.
+
 ## Purpose
 
 - One publication path for every AppFactory static site (corporate pages, documentation, landing pages).
@@ -49,7 +62,8 @@ production branch (`preview-main` for a preview of `main`). The upload step only
 - **Idempotent**: same build → same hashes; re-running converges. Rollback = redeploy a previous reviewed revision.
 - **Engineering-grade**: `contents: read` only, credentials never persisted, action pinned by commit SHA, secrets read
   by one step only, `plan → review → apply` through `mode`.
-- **Reuse-first**: Adopt `cloudflare/wrangler-action` (official, pinned) rather than scripting the Pages API; Cloudflare's
-  Git integration was rejected because it bypasses the consumer's CI gates and installs a third-party app on the repository.
+- **Reuse-first**: Adopt `cloudflare/wrangler-action` (official, pinned) rather than scripting the Pages API. Cloudflare's
+  Git integration is not rejected: it is the canonical path (above); this workflow is the documented exception when
+  that path is unavailable, and keeps the consumer's CI gates in front of the upload.
 - **Retroactive**: existing projects, custom domains and DNS are never created or modified here.
 - Out of scope: project creation, custom domains, zone or DNS changes, Workers.

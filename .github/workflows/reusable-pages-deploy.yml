@@ -2,6 +2,8 @@ name: AppFactory reusable Cloudflare Pages deployment
 
 # Builds a static site in the consumer repository, validates the output, then uploads it to an existing
 # Cloudflare Pages project with Direct Upload. Mode "plan" runs the same build and validation without secrets.
+# Exception path: the canonical Pages path is the Git integration provisioned by Trigenys/appfactory
+# (POST /infrastructure/pages, OIDC); see docs/reusable-pages-deploy.md before adopting this workflow.
 
 on:
   workflow_call:

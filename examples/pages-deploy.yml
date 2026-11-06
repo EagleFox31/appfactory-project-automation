@@ -1,6 +1,8 @@
 name: deploy
 
 # Manual, human-decided publication of a static site to an existing Cloudflare Pages project.
+# Exception path: prefer the Git integration provisioned by Trigenys/appfactory (POST /infrastructure/pages, OIDC,
+# no Cloudflare secret in this repository); use this workflow only where that integration is unavailable.
 # "plan" builds and validates without any secret; "preview" and "production" upload after the same checks.
 
 on:
