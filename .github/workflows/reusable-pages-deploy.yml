@@ -1,0 +1,156 @@
+name: AppFactory reusable Cloudflare Pages deployment
+
+# Builds a static site in the consumer repository, validates the output, then uploads it to an existing
+# Cloudflare Pages project with Direct Upload. Mode "plan" runs the same build and validation without secrets.
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        description: Immutable commit SHA containing the reviewed deployment contract.
+        required: true
+        type: string
+      mode:
+        description: plan (build + validate, no secret, no upload), preview (branch alias URL) or production (production branch).
+        required: false
+        type: string
+        default: plan
+      project_name:
+        description: Existing Cloudflare Pages project slug (created once by an account admin).
+        required: true
+        type: string
+      dist_dir:
+        description: Built static output uploaded as-is (may contain _headers and _redirects).
+        required: true
+        type: string
+      build_command:
+        description: Consumer build, executed without secrets.
+        required: true
+        type: string
+      install_command:
+        description: Consumer dependency install, executed without secrets. Empty skips it.
+        required: false
+        type: string
+        default: ""
+      working_directory:
+        description: Directory for install and build commands.
+        required: false
+        type: string
+        default: .
+      checkout_ref:
+        description: Optional immutable consumer revision to deploy.
+        required: false
+        type: string
+        default: ""
+      production_branch:
+        description: Pages production branch. Empty discovers the consumer's default branch.
+        required: false
+        type: string
+        default: ""
+      github_environment:
+        description: GitHub environment that holds the Cloudflare secrets and approval rules. Empty uses the mode name.
+        required: false
+        type: string
+        default: ""
+      node_version:
+        description: Node.js version for the consumer build.
+        required: false
+        type: string
+        default: "20"
+    secrets:
+      cloudflare_api_token:
+        description: API token limited to "Cloudflare Pages - Edit" on the account. Not needed for mode plan.
+        required: false
+      cloudflare_account_id:
+        description: Cloudflare account identifier. Not needed for mode plan.
+        required: false
+    outputs:
+      deployment_url:
+        description: Unique URL of the uploaded deployment (empty in plan mode).
+        value: ${{ jobs.deploy.outputs.deployment_url }}
+      alias_url:
+        description: Stable branch alias URL (empty in plan mode).
+        value: ${{ jobs.deploy.outputs.alias_url }}
+      branch:
+        description: Pages branch used for the upload.
+        value: ${{ jobs.deploy.outputs.branch }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build, validate and upload static site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    environment: ${{ inputs.mode != 'plan' && (inputs.github_environment || inputs.mode) || '' }}
+    concurrency:
+      group: appfactory-pages-${{ inputs.project_name }}-${{ inputs.mode }}
+      cancel-in-progress: false
+    outputs:
+      deployment_url: ${{ steps.upload.outputs.deployment-url }}
+      alias_url: ${{ steps.upload.outputs.pages-deployment-alias-url }}
+      branch: ${{ steps.plan.outputs.branch }}
+    env:
+      PAGES_MODE: ${{ inputs.mode }}
+      PAGES_PROJECT_NAME: ${{ inputs.project_name }}
+      PAGES_DIST_DIR: ${{ github.workspace }}/${{ inputs.dist_dir }}
+      PAGES_PRODUCTION_BRANCH: ${{ inputs.production_branch || github.event.repository.default_branch }}
+      PAGES_REF_NAME: ${{ github.ref_name }}
+      INSTALL_COMMAND: ${{ inputs.install_command }}
+      BUILD_COMMAND: ${{ inputs.build_command }}
+    steps:
+      - name: Checkout consumer (unprivileged)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Checkout reviewed deployment contract
+        uses: actions/checkout@v4
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory-pages
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install and build consumer (no secret)
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INSTALL_COMMAND" ]; then bash -euo pipefail -c "$INSTALL_COMMAND"; fi
+          bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - name: Validate inputs and built output
+        id: plan
+        shell: bash
+        run: node .appfactory-pages/scripts/pages-deploy/contract.mjs
+
+      - name: Upload to Cloudflare Pages
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        id: upload
+        uses: cloudflare/wrangler-action@2ef9f398b9175c68f953e40d679493850d640a85 # v4.1.3
+        with:
+          apiToken: ${{ secrets.cloudflare_api_token }}
+          accountId: ${{ secrets.cloudflare_account_id }}
+          command: pages deploy "${{ env.PAGES_DIST_DIR }}" --project-name="${{ inputs.project_name }}" --branch="${{ steps.plan.outputs.branch }}" --commit-dirty=true
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Cloudflare Pages (${PAGES_MODE})"
+            echo "- project: ${PAGES_PROJECT_NAME}"
+            echo "- branch: ${{ steps.plan.outputs.branch }}"
+            echo "- files: ${{ steps.plan.outputs.files }} (${{ steps.plan.outputs.bytes }} bytes)"
+            echo "- deployment: ${{ steps.upload.outputs.deployment-url || 'none (plan)' }}"
+            echo "- alias: ${{ steps.upload.outputs.pages-deployment-alias-url || 'none (plan)' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

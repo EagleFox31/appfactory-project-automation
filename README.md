@@ -65,6 +65,7 @@ Project automation is the main product and the Marketplace Action. This reposito
 | **Tauri desktop releases** | `.github/workflows/release-tauri-desktop.yml@v1` | Release Please + exact-SHA Tauri MSI build + install/uninstall validation + checksum/provenance |
 | **Impact-Aware CI** | `.github/workflows/reusable-impact-analysis.yml@v1` | Change-impact analysis that maps changed paths to affected surfaces and required gates before expensive CI/CD work runs |
 | **Visual QA for frontend** | `.github/workflows/reusable-visual-qa.yml@reviewed-SHA` | Opt-in, Impact-Aware desktop/mobile screenshots, keyboard/axe, reduced motion, media, console and Lighthouse LCP/CLS/TBT gates ([runbook](docs/reusable-visual-qa.md)) |
+| **Cloudflare Pages deployment** | `.github/workflows/reusable-pages-deploy.yml@reviewed-SHA` | Build and validate a static site without secrets (`plan`), then upload it to an **existing** Cloudflare Pages project (`preview` / `production`) with a SHA-pinned wrangler action; no project, domain or DNS change ([contract](docs/reusable-pages-deploy.md)) |
 | **Container plan (read-only)** | `.github/workflows/reusable-container-plan.yml` | Validate consumer Docker configuration and source identity without any write permission or cloud call |
 | **Container builds (GHCR)** | `.github/workflows/reusable-container-build.yml` | Validated consumer Docker profiles, read-only plan and release-only SHA-tagged multi-arch image publishing; **no AWS/server deploy** ([contract](docs/reusable-container-build.md)) |
 | **AWS SSM target inspection** | `.github/workflows/reusable-container-ssm-preflight.yml` | OIDC read-only EC2/SSM verification of **dedicated existing** target (account, tags, CPU, repository/environment) without cloud changes; see [runbook](docs/ssm-readonly-preflight.md) |
@@ -300,6 +301,10 @@ The workflow keeps release orchestration in AppFactory while preserving product-
 - uploads the validated files both as an Actions artifact and as GitHub Release assets.
 
 Manifest-driven Release Please is supported for prerelease tracks such as beta channels. See [`examples/tauri-desktop-release.yml`](examples/tauri-desktop-release.yml).
+
+### Cloudflare Pages static deployment
+
+Use [`reusable-pages-deploy.yml`](.github/workflows/reusable-pages-deploy.yml) to publish a static site to an existing Cloudflare Pages project. The consumer build runs without any secret; a reviewed contract validates the output (`index.html`, file count, project slug, Pages branch) before the only step that reads `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`. `mode: plan` is safe on pull requests; `preview` and `production` are meant for `workflow_dispatch` behind protected environments. Project creation, custom domains and DNS stay manual. See [`examples/pages-deploy.yml`](examples/pages-deploy.yml) and the [contract](docs/reusable-pages-deploy.md).
 
 ## `appfactory-product` template
 

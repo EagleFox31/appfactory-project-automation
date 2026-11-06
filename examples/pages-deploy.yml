@@ -1,0 +1,30 @@
+name: deploy
+
+# Manual, human-decided publication of a static site to an existing Cloudflare Pages project.
+# "plan" builds and validates without any secret; "preview" and "production" upload after the same checks.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: plan, preview or production
+        type: choice
+        options: [plan, preview, production]
+        default: plan
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-pages-deploy.yml@REVIEWED_APPFACTORY_SHA
+    with:
+      appfactory_ref: REVIEWED_APPFACTORY_SHA
+      mode: ${{ inputs.mode }}
+      project_name: ${{ vars.CF_PAGES_PROJECT || 'my-static-site' }}
+      dist_dir: site/dist
+      working_directory: site
+      build_command: npm run build
+    secrets:
+      cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
