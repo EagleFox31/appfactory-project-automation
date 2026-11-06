@@ -556,3 +556,61 @@ A successful workflow event is not proof that **the entire desired backlog state
 **RAIDER impact**
 
 Reusable + agnostic recovery; idempotent reconciliation; durable fail-closed behavior; brownfield recovery without recreating Projects. Production rollout requires a separately reviewed immutable runtime promotion.
+
+### LESSON-2026-017 — A credentials file written into the workspace is a published file when Hosting publishes the checkout
+
+- **Date:** 2026-11-06
+- **Category:** security · deployment · supply chain
+- **Status:** prevention-implemented (`reusable-firebase-deploy.yml`, `scripts/firebase-deploy/contract.mjs`)
+- **Related:** Love Ink Firebase integration (phase 1), `docs/reusable-firebase-deploy.md`
+
+**Context / incident (near miss, found at design time)**
+
+`google-github-actions/auth` writes `gha-creds-<random>.json` into `$GITHUB_WORKSPACE` (`create_credentials_file: true`, the default). A consumer whose `firebase.json` declares `hosting.public: "."` uploads the whole checkout: the federated-credential file would have been published on the production site for the lifetime of the release.
+
+**Root cause**
+
+Two independent defaults compose badly: the auth action assumes the workspace is private scratch space, and Firebase Hosting assumes `public` only holds site content. Nothing in either tool checks the other.
+
+**Resolution / prevention**
+
+- The workflow runs the auth action with `GITHUB_WORKSPACE` overridden to `$RUNNER_TEMP/appfactory-firebase-credentials` (mode 700), verifies afterwards that no `gha-creds-*.json` exists under the real workspace, and deletes the directory in an `always()` step on top of the action's own cleanup.
+- The contract refuses, in every mode, any credential-looking file in the public directory (name patterns and JSON content markers) and, when `public` is the checkout, requires `hosting.ignore` to list `**/gha-creds-*.json` and `**/.*`.
+- Unit tests cover both refusals and the workflow structure (credentials directory outside the workspace, removal step `if: always()`).
+
+**Generalized lesson**
+
+When a deploy step publishes a directory, enumerate everything any earlier step may write into it, including tool defaults. A credential should live outside every directory a build or a publisher can read.
+
+**RAIDER impact**
+
+Durable (new tests), engineering-grade (least privilege, no secret input), failure memory (this entry + contract rules).
+
+### LESSON-2026-018 — Firebase Hosting on GitHub Actions: the official action needs a key, the CLI does not
+
+- **Date:** 2026-11-06
+- **Category:** reuse-first · identity · versions
+- **Status:** prevention-implemented (`KNOWN_BROKEN` in `scripts/firebase-deploy/contract.mjs`, bootstrap runbook)
+- **Related:** `docs/gcp-wif-one-time-bootstrap.md`, `docs/reusable-firebase-deploy.md`
+
+**Context / incident**
+
+Reuse-first evaluation for a keyless Firebase deployment. `FirebaseExtended/action-hosting-deploy` only accepts a service-account JSON (`firebaseServiceAccount`); Workload Identity support is an open request (upstream issues #174, #399). The consumer's existing workflow stored that JSON as a GitHub secret.
+
+**Root cause**
+
+The action embeds its own credential loading instead of honouring Application Default Credentials. `firebase-tools` itself does honour ADC, including `external_account` credentials produced by Workload Identity Federation (verified: the CLI reaches the STS exchange), but three recent versions break the path: `firebase-tools` 15.22.2 rejects WIF credentials (fixed in 15.22.3) and Node 22.23.0 / 24.17.0 crash the CLI. A Workload Identity Provider whose attribute mapping lacks `attribute.repository` silently makes every `principalSet://…/attribute.repository/<owner>/<repo>` binding ineffective (`invalid_target` at the STS step).
+
+**Resolution / prevention**
+
+- Decision **Adapt**: `google-github-actions/auth` (commit-pinned) + `npx firebase-tools@<exact version>`; no secret input exists on the reusable workflow.
+- The contract requires exact `x.y.z` versions and refuses the versions listed in `KNOWN_BROKEN`; extend that list rather than bumping blindly after a regression.
+- The bootstrap runbook makes the `attribute.repository` mapping mandatory and separates verification (`describe` / `get-iam-policy`) from application (`create` / `add-iam-policy-binding`).
+
+**Generalized lesson**
+
+A vendor "official" action is not automatically the reuse-first answer: check how it obtains credentials before adopting it. Pin exact tool versions and keep a refusal list for versions that broke a verified path.
+
+**RAIDER impact**
+
+Reuse-first recorded with the alternative considered; agnostic (identity and versions are inputs); failure memory encoded in the contract.
