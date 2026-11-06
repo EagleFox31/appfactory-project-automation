@@ -18,6 +18,14 @@ test('reusable Pages deployment stays read-only, pinned and secret-free in plan 
   assert.doesNotMatch(workflow, /echo .*secrets\./);
 });
 
+test('documentation presents the workflow as the exception to the AppFactory Git integration', () => {
+  const doc = readFileSync(new URL('../docs/reusable-pages-deploy.md', import.meta.url), 'utf8');
+  assert.match(doc, /POST \/infrastructure\/pages/);
+  assert.match(doc, /issue #45/);
+  assert.doesNotMatch(doc, /Git integration was rejected/);
+  assert.match(workflow, /Exception path/);
+});
+
 test('project names follow the Cloudflare Pages slug contract', () => {
   assert.equal(assertProjectName('trigenys-website'), 'trigenys-website');
   for (const bad of ['', 'Trigenys', '-x', 'a_b', 'a'.repeat(59)]) assert.throws(() => assertProjectName(bad), /project_name/);
