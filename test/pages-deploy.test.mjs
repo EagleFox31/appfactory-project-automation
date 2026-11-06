@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { assertProjectName, resolveBranch, inspectDist, buildPlan } from '../scripts/pages-deploy/contract.mjs';
 
-const workflow = readFileSync(new URL('../.github/workflows/reusable-pages-deploy.yml', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/reusable-pages-deploy.yml', import.meta.url), 'utf8').replace(/
+/g, '
+');
 
 test('reusable Pages deployment stays read-only, pinned and secret-free in plan mode', () => {
   assert.match(workflow, /^permissions:\n  contents: read/m);
