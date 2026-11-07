@@ -1,0 +1,310 @@
+name: AppFactory reusable Firebase deployment
+
+# Builds a static site in the consumer repository, validates firebase.json and the public directory with a
+# reviewed contract, then deploys Hosting (and optionally Firestore rules/indexes) to an existing Firebase
+# project. Authentication is GitHub OIDC + Workload Identity Federation impersonating a service account:
+# no key, no JSON secret, no legacy CLI token. Mode "plan" runs build + contract without any Google credential.
+# The credentials file created by google-github-actions/auth is written under RUNNER_TEMP (never in the
+# workspace, which a consumer may publish with hosting.public ".") and removed when the job ends.
+
+on:
+  workflow_call:
+    inputs:
+      appfactory_ref:
+        description: Immutable commit SHA containing the reviewed deployment contract.
+        required: true
+        type: string
+      mode:
+        description: plan (build + contract, no credential), preview (Hosting preview channel) or production (live channel).
+        required: false
+        type: string
+        default: plan
+      firebase_project_id:
+        description: Existing Firebase / Google Cloud project id (created once by a project owner).
+        required: true
+        type: string
+      workload_identity_provider:
+        description: Full resource name of the Workload Identity Provider (projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>). Not a secret; empty is accepted in plan mode only.
+        required: false
+        type: string
+        default: ""
+      service_account:
+        description: Email of the deployment service account impersonated through the provider. Not a secret; empty is accepted in plan mode only.
+        required: false
+        type: string
+        default: ""
+      targets:
+        description: Comma-separated deploy targets among hosting, firestore:rules, firestore:indexes. Preview mode accepts hosting only.
+        required: false
+        type: string
+        default: hosting
+      hosting_target:
+        description: Hosting deploy target or site id when firebase.json declares several hosting sites.
+        required: false
+        type: string
+        default: ""
+      site_dir:
+        description: Directory holding firebase.json, relative to the consumer checkout.
+        required: false
+        type: string
+        default: .
+      install_command:
+        description: Consumer dependency install, executed without credentials. Empty skips it.
+        required: false
+        type: string
+        default: ""
+      build_command:
+        description: Consumer build, executed without credentials. Empty skips it (site already committed).
+        required: false
+        type: string
+        default: ""
+      checkout_ref:
+        description: Immutable consumer commit SHA to deploy (recommended). Empty deploys the triggering ref.
+        required: false
+        type: string
+        default: ""
+      production_branch:
+        description: Only branch allowed to deploy in production mode. Empty discovers the consumer's default branch.
+        required: false
+        type: string
+        default: ""
+      preview_channel:
+        description: Hosting preview channel id (preview mode). Empty derives it from the branch name. "live" is refused.
+        required: false
+        type: string
+        default: ""
+      preview_expires:
+        description: Preview channel lifetime (firebase --expires syntax).
+        required: false
+        type: string
+        default: 7d
+      github_environment:
+        description: GitHub environment holding approval rules and deployment branch policies. Empty uses the mode name.
+        required: false
+        type: string
+        default: ""
+      firebase_tools_version:
+        description: Exact firebase-tools version (reproducible; known-broken versions are refused by the contract).
+        required: false
+        type: string
+        default: "15.35.0"
+      node_version:
+        description: Exact Node.js version for the build and firebase-tools (known-broken versions are refused).
+        required: false
+        type: string
+        default: "24.18.0"
+      debug:
+        description: Pass --debug to firebase-tools (verbose authentication diagnostics; never prints tokens).
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      deployed_sha:
+        description: Commit actually checked out and deployed (empty in plan mode).
+        value: ${{ jobs.deploy.outputs.deployed_sha }}
+      channel:
+        description: Hosting channel used (live for production).
+        value: ${{ jobs.deploy.outputs.channel }}
+      hosting_url:
+        description: Preview channel URL in preview mode, first site URL in production mode (empty in plan mode).
+        value: ${{ jobs.deploy.outputs.hosting_url }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build, validate and deploy to Firebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ inputs.mode != 'plan' && (inputs.github_environment || inputs.mode) || '' }}
+    concurrency:
+      group: appfactory-firebase-${{ inputs.firebase_project_id }}-${{ inputs.mode == 'production' && 'live' || inputs.mode }}
+      cancel-in-progress: false
+    outputs:
+      deployed_sha: ${{ steps.deployed.outputs.sha }}
+      channel: ${{ steps.plan.outputs.channel }}
+      hosting_url: ${{ steps.deployed.outputs.url }}
+    env:
+      FIREBASE_MODE: ${{ inputs.mode }}
+      FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
+      FIREBASE_WORKLOAD_IDENTITY_PROVIDER: ${{ inputs.workload_identity_provider }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ inputs.service_account }}
+      FIREBASE_TARGETS: ${{ inputs.targets }}
+      FIREBASE_HOSTING_TARGET: ${{ inputs.hosting_target }}
+      FIREBASE_SITE_DIR: ${{ github.workspace }}/${{ inputs.site_dir }}
+      FIREBASE_WORKSPACE: ${{ github.workspace }}
+      FIREBASE_CHECKOUT_REF: ${{ inputs.checkout_ref }}
+      FIREBASE_PRODUCTION_BRANCH: ${{ inputs.production_branch || github.event.repository.default_branch }}
+      FIREBASE_PREVIEW_CHANNEL: ${{ inputs.preview_channel }}
+      FIREBASE_REF: ${{ github.ref }}
+      FIREBASE_REF_NAME: ${{ github.ref_name }}
+      FIREBASE_EVENT_NAME: ${{ github.event_name }}
+      FIREBASE_REPOSITORY: ${{ github.repository }}
+      FIREBASE_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      FIREBASE_TOOLS_VERSION: ${{ inputs.firebase_tools_version }}
+      FIREBASE_NODE_VERSION: ${{ inputs.node_version }}
+      INSTALL_COMMAND: ${{ inputs.install_command }}
+      BUILD_COMMAND: ${{ inputs.build_command }}
+    steps:
+      # The runner context is not available in job-level env: the credentials directory is derived from
+      # RUNNER_TEMP in a step and exported for every later step.
+      - name: Resolve credentials directory (outside the workspace)
+        shell: bash
+        run: echo "FIREBASE_CREDENTIALS_DIR=$RUNNER_TEMP/appfactory-firebase-credentials" >> "$GITHUB_ENV"
+
+      - name: Checkout consumer (unprivileged)
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Checkout reviewed deployment contract
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: EagleFox31/appfactory-project-automation
+          ref: ${{ inputs.appfactory_ref }}
+          path: .appfactory-firebase
+          persist-credentials: false
+
+      - name: Record checked out commit
+        id: head
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install and build consumer (no credential)
+        shell: bash
+        working-directory: ${{ inputs.site_dir }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INSTALL_COMMAND" ]; then bash -euo pipefail -c "$INSTALL_COMMAND"; fi
+          if [ -n "$BUILD_COMMAND" ]; then bash -euo pipefail -c "$BUILD_COMMAND"; fi
+
+      - name: Validate inputs, firebase.json, public directory and production guard
+        id: plan
+        shell: bash
+        env:
+          FIREBASE_HEAD_SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf .appfactory-firebase/.git
+          node .appfactory-firebase/scripts/firebase-deploy/contract.mjs
+
+      - name: Production guard (workflow-level, independent of the contract)
+        if: ${{ inputs.mode == 'production' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$FIREBASE_EVENT_NAME" in pull_request*|issue_comment|workflow_run) echo "::error::production refused for event $FIREBASE_EVENT_NAME"; exit 1;; esac
+          [ "$FIREBASE_REF" = "refs/heads/$FIREBASE_PRODUCTION_BRANCH" ] || { echo "::error::production refused: $FIREBASE_REF is not refs/heads/$FIREBASE_PRODUCTION_BRANCH"; exit 1; }
+          [ "$FIREBASE_HEAD_REPOSITORY" = "$FIREBASE_REPOSITORY" ] || { echo "::error::production refused: fork $FIREBASE_HEAD_REPOSITORY"; exit 1; }
+
+      - name: Prepare credentials directory outside the workspace
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$FIREBASE_CREDENTIALS_DIR"
+          mkdir -p "$FIREBASE_CREDENTIALS_DIR"
+          chmod 700 "$FIREBASE_CREDENTIALS_DIR"
+
+      - name: Authenticate to Google Cloud (OIDC, no key)
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        env:
+          # The action writes gha-creds-*.json into $GITHUB_WORKSPACE; redirect it outside the checkout so a
+          # consumer publishing its checkout (hosting.public ".") can never upload the credentials file.
+          GITHUB_WORKSPACE: ${{ env.FIREBASE_CREDENTIALS_DIR }}
+        with:
+          workload_identity_provider: ${{ inputs.workload_identity_provider }}
+          service_account: ${{ inputs.service_account }}
+          create_credentials_file: true
+          export_environment_variables: true
+          cleanup_credentials: true
+
+      - name: Verify credentials file location
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GOOGLE_APPLICATION_CREDENTIALS" in
+            "$FIREBASE_CREDENTIALS_DIR"/*) ;;
+            *) echo "::error::credentials file is not under $FIREBASE_CREDENTIALS_DIR"; exit 1;;
+          esac
+          if find "$GITHUB_WORKSPACE" -name 'gha-creds-*.json' -print -quit | grep -q .; then
+            echo "::error::a gha-creds file exists inside the workspace"; exit 1
+          fi
+
+      - name: Deploy preview channel
+        if: ${{ steps.plan.outputs.deploy == 'true' && inputs.mode == 'preview' }}
+        id: preview
+        shell: bash
+        working-directory: ${{ inputs.site_dir }}
+        run: |
+          set -euo pipefail
+          npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" hosting:channel:deploy "${{ steps.plan.outputs.channel }}" \
+            --project "$FIREBASE_PROJECT_ID" --expires "${{ inputs.preview_expires }}" --non-interactive --json \
+            ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-preview.json"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const sites = Object.values(r.result || {});
+            const url = sites[0]?.url || "";
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `url=${url}\n`);
+            console.log("preview:", url);
+          ' "$RUNNER_TEMP/firebase-preview.json"
+
+      - name: Deploy production
+        if: ${{ steps.plan.outputs.deploy == 'true' && inputs.mode == 'production' }}
+        id: production
+        shell: bash
+        working-directory: ${{ inputs.site_dir }}
+        run: |
+          set -euo pipefail
+          npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" deploy --only "${{ steps.plan.outputs.only }}" \
+            --project "$FIREBASE_PROJECT_ID" --message "${{ github.repository }}@${{ steps.head.outputs.sha }}" \
+            --non-interactive --force --json ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-production.json"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const url = r.result?.hosting?.[0]?.url || (typeof r.result?.hosting === "string" ? r.result.hosting : "") || "";
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `url=${url}\n`);
+            console.log("production:", url || "(see Firebase console)");
+          ' "$RUNNER_TEMP/firebase-production.json"
+
+      - name: Deployed revision
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        id: deployed
+        shell: bash
+        run: |
+          {
+            echo "sha=${{ steps.head.outputs.sha }}"
+            echo "url=${{ steps.preview.outputs.url || steps.production.outputs.url }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Remove credentials (always)
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$FIREBASE_CREDENTIALS_DIR" "$RUNNER_TEMP/firebase-preview.json" "$RUNNER_TEMP/firebase-production.json"
+          find "$GITHUB_WORKSPACE" -name 'gha-creds-*.json' -delete 2>/dev/null || true
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Firebase (${FIREBASE_MODE})"
+            echo "- project: ${FIREBASE_PROJECT_ID}"
+            echo "- targets: ${{ steps.plan.outputs.only || inputs.targets }}"
+            echo "- channel: ${{ steps.plan.outputs.channel || 'n/a' }}"
+            echo "- commit: ${{ steps.head.outputs.sha }}"
+            echo "- public files: ${{ steps.plan.outputs.files || 0 }} (${{ steps.plan.outputs.bytes || 0 }} bytes)"
+            echo "- url: ${{ steps.deployed.outputs.url || 'none (plan)' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
