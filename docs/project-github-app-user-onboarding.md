@@ -5,9 +5,11 @@ provider. The original GitHub App account-Projects permission assumption was
 incorrect. The hosted broker runs with `GITHUB_AUTH_PROVIDER=oauth-app`.
 Owner-triggered production Issue events are now validated end to end without PAT
 on both AgenStart and AgenFetch: the broker job succeeded, the token/PAT job was
-skipped, and the existing Projects were reconciled in place. The production broker authorizes promoted immutable AppFactory runtime
-`14d51168311c25f41d89df370c5e2ad2d5f42e83`; consumers use the canonical
-`broker-user` authentication name. Private Trigenys repository access is also
+skipped, and the existing Projects were reconciled in place. The production broker authorizes the immutable AppFactory runtime
+`0523510a8e42290df3bae5749d034b1637569af5` (`v1.4.0`, canonical since 2026-11-07); consumers use the canonical
+`broker-user` authentication name. The earlier promoted runtime
+`14d51168311c25f41d89df370c5e2ad2d5f42e83` stays allowlisted for compatibility but
+drops Issue events during bursts (repository-wide concurrency group); consumers must re-pin. Private Trigenys repository access is also
 validated end to end through the same broker after explicit organization OAuth approval. Contributor and bot delegation remains a
 separate validation boundary. See the [provider assessment](project-oauth-app-feasibility.md)
 and [broker setup](../broker/README.md).

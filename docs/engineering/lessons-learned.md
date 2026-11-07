@@ -556,3 +556,37 @@ A successful workflow event is not proof that **the entire desired backlog state
 **RAIDER impact**
 
 Reusable + agnostic recovery; idempotent reconciliation; durable fail-closed behavior; brownfield recovery without recreating Projects. Production rollout requires a separately reviewed immutable runtime promotion.
+
+### LESSON-2026-017 — A shipped fix does not reach consumers pinned to an older runtime
+
+- **Date:** 2026-11-07
+- **Category:** release-propagation · concurrency
+- **Status:** prevention-added
+- **Related:** EagleFox31/Pr-cis-Translation Issues #60–#64, LESSON-2026-011, LESSON-2026-016
+
+**Context / incident**
+
+Five Issues created within seconds in Précis Translation produced five Project Automation runs; three were `cancelled` and only two Issues reached the "Précis Translator Development" board. Précis pinned runtime `14d51168311c25f41d89df370c5e2ad2d5f42e83`, whose reusable workflow still used `group: project-automation-${{ github.repository }}`. The workaround was one `workflow_dispatch` per `issue_number`, run sequentially.
+
+**Root cause**
+
+The scheduler defect itself was already fixed on `main` (per-item group, 2026-09-26) and shipped in `v1.4.0` (`0523510`), together with the serialized bootstrap lane. But `14d5116` predates both, and the README, the onboarding guide, both consumer examples and this repository's own dogfood workflow kept presenting it as the "promoted" runtime. New consumers therefore copied a known-defective pin. LESSON-2026-016 had already observed the same drop on another consumer without changing the canonical pin.
+
+**Resolution**
+
+- Canonical pin moved to `0523510a8e42290df3bae5749d034b1637569af5` (`v1.4.0`): per Issue/PR concurrency lanes, a repository-scoped bootstrap lane, and broker-user support. It was already in the broker `ALLOWED_JOB_WORKFLOW_REFS`, so no broker deployment is required.
+- `14d5116` stays allowlisted (retroactive compatibility); docs flag it as defective and tell consumers to re-pin both `uses:` and `appfactory_ref`.
+- Parallel lanes stay idempotent: distinct Issues touch distinct Project items; repeated events for one Issue share a lane; `ensureProjectItem` reads before `addProjectV2ItemById`, which GitHub treats as idempotent for existing content; Project creation and schema changes only happen in the serialized bootstrap lane.
+- Per-item lanes were kept over a periodic/batch reconciliation: they fix the drop at the source with no extra API load, and the `'bootstrap'` fallback (not `github.run_id`) keeps manual bulk runs serialized.
+
+**Prevention**
+
+`test/project-runtime-pin.test.mjs` scans README, docs, examples and workflows for reusable-workflow pins and fails when a pin is in the known-defective runtime list, when `uses:` and `appfactory_ref` differ, or when a consumer pin is not accepted by the broker allowlist.
+
+**Generalized lesson**
+
+For SHA-pinned reusable automation, a fix is "delivered" only when the canonical documented pin includes it and consumers have re-pinned. Fixing `main` and tagging a release is not enough; the promoted pin is part of the release.
+
+**Derived principle / standard change**
+
+When a fix lands for a defect that drops or corrupts work, the same change (or its release) must update the canonical pin, list the defective runtime in the guardrail, and name the consumers that must re-pin.
