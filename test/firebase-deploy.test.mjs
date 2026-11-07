@@ -61,7 +61,8 @@ test('reusable Firebase workflow: plan mode never authenticates; contract runs b
 });
 
 test('reusable Firebase workflow: credentials file is written outside the workspace and removed', () => {
-  assert.match(workflow, /FIREBASE_CREDENTIALS_DIR: \$\{\{ runner\.temp \}\}\/appfactory-firebase-credentials/);
+  assert.doesNotMatch(workflow, /^\s+FIREBASE_CREDENTIALS_DIR: \$\{\{ runner\.temp \}\}/m, 'runner context is not available in job-level env');
+  assert.match(workflow, /echo "FIREBASE_CREDENTIALS_DIR=\$RUNNER_TEMP\/appfactory-firebase-credentials" >> "\$GITHUB_ENV"/);
   assert.match(workflow, /id: auth[\s\S]*?env:\n\s+#[^\n]*\n\s+#[^\n]*\n\s+GITHUB_WORKSPACE: \$\{\{ env\.FIREBASE_CREDENTIALS_DIR \}\}/);
   assert.match(workflow, /cleanup_credentials: true/);
   assert.match(workflow, /Verify credentials file location[\s\S]*?find "\$GITHUB_WORKSPACE" -name 'gha-creds-\*\.json'/);

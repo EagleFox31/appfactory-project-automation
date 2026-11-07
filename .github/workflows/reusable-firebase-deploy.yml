@@ -147,10 +147,15 @@ jobs:
       FIREBASE_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       FIREBASE_TOOLS_VERSION: ${{ inputs.firebase_tools_version }}
       FIREBASE_NODE_VERSION: ${{ inputs.node_version }}
-      FIREBASE_CREDENTIALS_DIR: ${{ runner.temp }}/appfactory-firebase-credentials
       INSTALL_COMMAND: ${{ inputs.install_command }}
       BUILD_COMMAND: ${{ inputs.build_command }}
     steps:
+      # The runner context is not available in job-level env: the credentials directory is derived from
+      # RUNNER_TEMP in a step and exported for every later step.
+      - name: Resolve credentials directory (outside the workspace)
+        shell: bash
+        run: echo "FIREBASE_CREDENTIALS_DIR=$RUNNER_TEMP/appfactory-firebase-credentials" >> "$GITHUB_ENV"
+
       - name: Checkout consumer (unprivileged)
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:

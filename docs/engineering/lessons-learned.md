@@ -614,3 +614,30 @@ A vendor "official" action is not automatically the reuse-first answer: check ho
 **RAIDER impact**
 
 Reuse-first recorded with the alternative considered; agnostic (identity and versions are inputs); failure memory encoded in the contract.
+
+### LESSON-2026-019 — `runner` context is not available in job-level `env` of a called workflow
+
+- **Date:** 2026-11-07
+- **Category:** workflow syntax · verification gap
+- **Status:** prevention-implemented (structural test in `test/firebase-deploy.test.mjs`)
+- **Related:** `.github/workflows/reusable-firebase-deploy.yml`
+
+**Context / incident**
+
+The first consumer run of `reusable-firebase-deploy.yml` (Love Ink) failed before any job started: *error parsing called workflow … Unrecognized named-value: 'runner'* at the job-level `env` entry `FIREBASE_CREDENTIALS_DIR: ${{ runner.temp }}/…`. Local validation (YAML parsing, structural tests, contract tests) had passed: none of them evaluates GitHub's expression-context rules.
+
+**Root cause**
+
+GitHub evaluates `jobs.<id>.env` before a runner is assigned, so the `runner` context is only valid inside steps. The workflow was never compiled by GitHub before the consumer PR because the reusable workflow has no self-test caller.
+
+**Resolution**
+
+The directory is resolved in the first step (`echo "FIREBASE_CREDENTIALS_DIR=$RUNNER_TEMP/…" >> "$GITHUB_ENV"`); a test rejects `runner.*` in job-level `env`.
+
+**Prevention / lesson**
+
+Local YAML parsing proves nothing about context availability. For a new reusable workflow, either run `actionlint` (it checks context availability per key) or trigger one real `workflow_call` from a consumer branch in `plan` mode before announcing the workflow usable.
+
+**RAIDER impact**
+
+Durable (regression test); failure memory recorded; Engineering-grade verification gap closed by the rule above.
