@@ -175,12 +175,12 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@14d51168311c25f41d89df370c5e2ad2d5f42e83
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-project-automation.yml@0523510a8e42290df3bae5749d034b1637569af5
     with:
       authentication: broker-user
       broker_url: https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/v1/github/user-token
       broker_audience: appfactory-project-automation
-      appfactory_ref: 14d51168311c25f41d89df370c5e2ad2d5f42e83
+      appfactory_ref: 0523510a8e42290df3bae5749d034b1637569af5
       config_path: .github/project-config.json
       issue_number: ${{ inputs.issue_number }}
 ```
@@ -189,7 +189,9 @@ jobs:
 
 For the hosted AppFactory broker, the Project owner authorizes the OAuth App once at `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/authorize`. This authorization is account-level and can be reused by compatible public repositories owned by the same account; **do not create a `PROJECT_TOKEN` secret in each repository**.
 
-The production broker now pins the promoted immutable Project runtime `14d51168311c25f41d89df370c5e2ad2d5f42e83`. The hosted broker accepts that reviewed workflow identity directly; consumers should use `broker-user` and the same immutable runtime for the reusable workflow and Action checkout.
+The canonical immutable Project runtime is `0523510a8e42290df3bae5749d034b1637569af5` (release `v1.4.0`), which the hosted broker allowlists. Consumers should use `broker-user` and the same immutable runtime for the reusable workflow and Action checkout.
+
+> **Re-pin consumers still on `14d51168311c25f41d89df370c5e2ad2d5f42e83`.** That earlier runtime uses one repository-wide concurrency group: during a burst of Issue events GitHub keeps only one pending run, cancels the others, and those Issues never reach the board. `v1.4.0` scopes concurrency per Issue/PR and serializes Project bootstrap separately. The broker still accepts the old SHA so existing consumers keep working, but a fix in this repository only reaches a consumer after it updates **both** the `uses: ...@<sha>` line and `appfactory_ref`. Backfill Issues dropped before the re-pin with one `workflow_dispatch` per `issue_number`.
 
 If you explicitly need the old PAT path, use [`examples/project-automation-pat.yml`](examples/project-automation-pat.yml).
 

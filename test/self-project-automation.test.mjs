@@ -42,7 +42,7 @@ test('AppFactory dogfoods Project automation with a valid self-owned backlog', (
 
 test('Self automation invokes the pinned shared workflow with zero long-lived tokens', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
-  const pinnedSha = '14d51168311c25f41d89df370c5e2ad2d5f42e83';
+  const pinnedSha = '0523510a8e42290df3bae5749d034b1637569af5';
   assert.match(workflow, /^name: Project automation/m);
   assert.match(workflow, /^  issues:/m);
   assert.match(workflow, /^  pull_request_target:/m);
@@ -52,7 +52,7 @@ test('Self automation invokes the pinned shared workflow with zero long-lived to
   assert.match(workflow, /authentication: broker-user/);
   assert.match(workflow, /broker_audience: appfactory-project-automation/);
   assert.match(workflow, /config_path: \.github\/project-config\.json/);
-  assert.match(workflow, /appfactory_ref: 14d51168311c25f41d89df370c5e2ad2d5f42e83/);
+  assert.match(workflow, /appfactory_ref: 0523510a8e42290df3bae5749d034b1637569af5/);
   assert.match(workflow, new RegExp('reusable-project-automation\\.yml@' + pinnedSha));
   assert.doesNotMatch(workflow, /PROJECT_TOKEN|secrets\.|authentication: token|contents: write/);
 });
