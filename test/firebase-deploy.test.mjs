@@ -268,3 +268,12 @@ test('buildPlan: multi-site hosting target is carried into --only', () => {
   const dir = site({ hosting: [{ target: 'www', public: 'public' }, { target: 'docs', public: 'public' }] });
   assert.equal(buildPlan(env(dir, { FIREBASE_MODE: 'production', FIREBASE_HOSTING_TARGET: 'www', FIREBASE_TARGETS: 'hosting' })).only, 'hosting:www');
 });
+
+test('reusable Firebase workflow: a failed firebase-tools run surfaces its JSON error', () => {
+  // --json writes the error into the redirected report: without this the log shows only "exit code 1".
+  assert.match(workflow, /FIREBASE_REPORT_ERROR: \|/);
+  for (const report of ['firebase-production\\.json', 'firebase-preview\\.json']) {
+    const re = new RegExp(`> "\\$RUNNER_TEMP/${report}"; then\\n\\s+node -e "\\$FIREBASE_REPORT_ERROR" "\\$RUNNER_TEMP/${report}"; exit 1`);
+    assert.match(workflow, re, report);
+  }
+});
