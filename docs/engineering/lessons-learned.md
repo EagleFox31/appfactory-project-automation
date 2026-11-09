@@ -668,3 +668,5 @@ A script that gates later steps through outputs must fail loudly when it emits n
 **RAIDER impact**
 
 Durable (subprocess + static regression tests); Engineering-grade (fail-closed guard instead of silent skip); Agnostic (no OS-specific path handling).
+
+**Follow-up (same day)**: once the entrypoint ran, the credential scan rejected Love Ink's committed `server/mailer/.env.example`, a placeholder template that `hosting.ignore` already excluded. Templates (`.env.example|sample|template|dist`) are now exempt; real `.env*` files still fail. Lesson: a guard that never ran was never calibrated, so enabling it must be followed by a real consumer plan before declaring the fix done.
