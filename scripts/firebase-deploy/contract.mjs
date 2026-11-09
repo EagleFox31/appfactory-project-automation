@@ -23,6 +23,8 @@ export const KNOWN_BROKEN = {
 
 // File names and contents that must never be published from a Hosting public directory.
 export const CREDENTIAL_FILE_RE = /^(gha-creds-.*\.json|.*service[-_]?account.*\.json|\.env(\..+)?|application_default_credentials\.json)$/i;
+// Committed configuration templates (.env.example, .env.sample, .env.template, .env.dist) hold placeholders, not secrets.
+export const CREDENTIAL_TEMPLATE_RE = /^\.env\.(example|sample|template|dist)$/i;
 const CREDENTIAL_CONTENT_RE = /"type"\s*:\s*"(service_account|external_account|authorized_user)"|"private_key"\s*:|"refresh_token"\s*:/;
 const CONTENT_SCAN_MAX_BYTES = 256 * 1024;
 
@@ -128,7 +130,7 @@ export function inspectPublicDir({ siteDir, hosting, workspace }) {
       const size = statSync(p).size;
       bytes += size;
       if (!rel && e.name === "index.html") index = true;
-      if (CREDENTIAL_FILE_RE.test(e.name)) { problems.push(r); continue; }
+      if (CREDENTIAL_FILE_RE.test(e.name) && !CREDENTIAL_TEMPLATE_RE.test(e.name)) { problems.push(r); continue; }
       if (/\.json$/i.test(e.name) && size <= CONTENT_SCAN_MAX_BYTES && CREDENTIAL_CONTENT_RE.test(readFileSync(p, "utf8"))) problems.push(r);
     }
   };

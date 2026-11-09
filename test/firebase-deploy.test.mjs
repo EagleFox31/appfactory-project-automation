@@ -173,6 +173,8 @@ test('security: credential-looking files in the public directory fail the contra
     ['public/config.json', '{"type": "service_account", "private_key": "-----BEGIN"}'],
     ['public/adc.json', '{"refresh_token": "1//x", "type":"authorized_user"}'],
     ['public/.env', 'FIREBASE_TOKEN=x'],
+    ['public/.env.production', 'FIREBASE_TOKEN=x'],
+    ['public/server/.env.local', 'FIREBASE_TOKEN=x'],
     ['public/application_default_credentials.json', '{}'],
   ];
   for (const [rel, content] of cases) {
@@ -183,6 +185,11 @@ test('security: credential-looking files in the public directory fail the contra
   }
   const harmless = site({ extraFiles: [['public/data/site.json', '{"name":"Love Ink","type":"website"}'], ['public/manifest.json', '{"icons":[]}']] });
   assert.equal(buildPlan(env(harmless)).files, 3);
+  // Committed templates hold placeholders: they must not block a deployment.
+  for (const name of ['.env.example', '.env.sample', '.env.template', '.env.dist']) {
+    const tpl = site({ extraFiles: [[`public/server/mailer/${name}`, 'SMTP_PASS=']] });
+    assert.equal(buildPlan(env(tpl)).files, 2, name);
+  }
 });
 
 test('security: publishing the checkout (hosting.public ".") requires hosting.ignore to exclude credentials and dotfiles', () => {
