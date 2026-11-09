@@ -61,8 +61,10 @@ Outputs: `deploy`, `only`, `channel`, `files`, `bytes`, `public_dir`, `credentia
 `google-github-actions/auth` writes its credentials file into `$GITHUB_WORKSPACE`. With `hosting.public: "."`
 that file would be uploaded to the website. The workflow therefore:
 
-1. creates `$RUNNER_TEMP/appfactory-firebase-credentials` (mode 700) and runs the auth action with
-   `GITHUB_WORKSPACE` overridden to that directory (the action reads the variable from its environment);
+1. creates `$RUNNER_TEMP/appfactory-firebase-credentials` (mode 700), runs the auth action (which always
+   writes into the real workspace: the runner ignores step-level `GITHUB_*` overrides), then immediately moves
+   the file into that directory and re-exports `GOOGLE_APPLICATION_CREDENTIALS`,
+   `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE` and `GOOGLE_GHA_CREDS_PATH` (no consumer code runs in between);
 2. verifies that `GOOGLE_APPLICATION_CREDENTIALS` points under that directory and that no `gha-creds-*.json`
    exists under the real workspace, before any deploy step;
 3. lets the action's own post-step delete the file (`cleanup_credentials: true`) and additionally removes the
