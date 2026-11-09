@@ -196,6 +196,7 @@ jobs:
           set -euo pipefail
           rm -rf .appfactory-firebase/.git
           node .appfactory-firebase/scripts/firebase-deploy/contract.mjs
+          grep -q "^deploy=" "$GITHUB_OUTPUT" || { echo "::error::Firebase contract produced no plan outputs (entrypoint not executed)"; exit 1; }
 
       - name: Production guard (workflow-level, independent of the contract)
         if: ${{ inputs.mode == 'production' }}

@@ -4,6 +4,7 @@
 // Pure functions are exported for tests; the CLI prints a plan and GitHub outputs. Mode "plan" needs no GCP access.
 import { readdirSync, statSync, existsSync, appendFileSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const MODES = new Set(["plan", "preview", "production"]);
 export const TARGETS = new Set(["hosting", "firestore:rules", "firestore:indexes"]);
@@ -211,7 +212,7 @@ export function buildPlan(env) {
   };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const plan = buildPlan(process.env);
   console.log(`Firebase ${plan.mode}: project=${plan.project} only=${plan.only} channel=${plan.channel} public=${plan.publicRel || "-"} files=${plan.files} bytes=${plan.bytes} guard=${plan.guard.reason}`);
   for (const w of plan.warnings) console.log(`::warning::${w}`);

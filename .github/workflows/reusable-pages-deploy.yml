@@ -133,7 +133,10 @@ jobs:
       - name: Validate inputs and built output
         id: plan
         shell: bash
-        run: node .appfactory-pages/scripts/pages-deploy/contract.mjs
+        run: |
+          set -euo pipefail
+          node .appfactory-pages/scripts/pages-deploy/contract.mjs
+          grep -q "^deploy=" "$GITHUB_OUTPUT" || { echo "::error::Pages contract produced no plan outputs (entrypoint not executed)"; exit 1; }
 
       - name: Upload to Cloudflare Pages
         if: ${{ steps.plan.outputs.deploy == 'true' }}
