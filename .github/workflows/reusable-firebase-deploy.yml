@@ -150,6 +150,18 @@ jobs:
       FIREBASE_NODE_VERSION: ${{ inputs.node_version }}
       INSTALL_COMMAND: ${{ inputs.install_command }}
       BUILD_COMMAND: ${{ inputs.build_command }}
+      # Prints the firebase-tools --json error (or the raw report) as a workflow annotation.
+      FIREBASE_REPORT_ERROR: |
+        const fs = require('fs');
+        let msg = 'firebase-tools failed and wrote no report';
+        try {
+          const raw = fs.readFileSync(process.argv[1], 'utf8').trim();
+          if (raw) {
+            try { const r = JSON.parse(raw); msg = 'firebase-tools failed: ' + (r.error || raw.slice(-2000)); }
+            catch { msg = 'firebase-tools failed: ' + raw.slice(-2000); }
+          }
+        } catch {}
+        console.log('::error::' + String(msg).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'));
     steps:
       # The runner context is not available in job-level env: the credentials directory is derived from
       # RUNNER_TEMP in a step and exported for every later step.
@@ -272,9 +284,11 @@ jobs:
         working-directory: ${{ inputs.site_dir }}
         run: |
           set -euo pipefail
-          npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" hosting:channel:deploy "${{ steps.plan.outputs.channel }}" \
+          if ! npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" hosting:channel:deploy "${{ steps.plan.outputs.channel }}" \
             --project "$FIREBASE_PROJECT_ID" --expires "${{ inputs.preview_expires }}" --non-interactive --json \
-            ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-preview.json"
+            ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-preview.json"; then
+            node -e "$FIREBASE_REPORT_ERROR" "$RUNNER_TEMP/firebase-preview.json"; exit 1
+          fi
           node -e '
             const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
             const sites = Object.values(r.result || {});
@@ -290,9 +304,12 @@ jobs:
         working-directory: ${{ inputs.site_dir }}
         run: |
           set -euo pipefail
-          npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" deploy --only "${{ steps.plan.outputs.only }}" \
+          # --json sends the error to stdout (the file): surface it, otherwise a failure is undiagnosable.
+          if ! npx -y "firebase-tools@${FIREBASE_TOOLS_VERSION}" deploy --only "${{ steps.plan.outputs.only }}" \
             --project "$FIREBASE_PROJECT_ID" --message "${{ github.repository }}@${{ steps.head.outputs.sha }}" \
-            --non-interactive --force --json ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-production.json"
+            --non-interactive --force --json ${{ inputs.debug && '--debug' || '' }} > "$RUNNER_TEMP/firebase-production.json"; then
+            node -e "$FIREBASE_REPORT_ERROR" "$RUNNER_TEMP/firebase-production.json"; exit 1
+          fi
           node -e '
             const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
             const url = r.result?.hosting?.[0]?.url || (typeof r.result?.hosting === "string" ? r.result.hosting : "") || "";
