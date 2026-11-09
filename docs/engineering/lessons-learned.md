@@ -641,3 +641,30 @@ Local YAML parsing proves nothing about context availability. For a new reusable
 **RAIDER impact**
 
 Durable (regression test); failure memory recorded; Engineering-grade verification gap closed by the rule above.
+
+## 2026-11-09 — Deployment contract CLI entrypoint was a silent no-op on Linux
+
+- **Date:** 2026-11-09
+- **Category:** platform assumption · silent success · verification gap
+- **Status:** prevention-implemented (`test/contract-cli.test.mjs` + workflow guard)
+- **Related:** `scripts/firebase-deploy/contract.mjs`, `scripts/pages-deploy/contract.mjs`, both reusable deploy workflows
+
+**Context / incident**
+
+After Love Ink merged its WIF migration, the production run of `reusable-firebase-deploy.yml` was green but deployed nothing: the `plan` step emitted no outputs, so every `if: steps.plan.outputs.deploy == 'true'` step was skipped. Plan mode had never validated anything either.
+
+**Root cause**
+
+The entrypoint guard compared `import.meta.url` to `` new URL(`file:///${process.argv[1]}`) ``. On Linux `argv[1]` is already absolute (`/home/runner/...`), giving `file:////home/...`, which never matches; the module loaded, ran nothing and exited 0. Unit tests imported the pure functions and never executed the CLI.
+
+**Resolution**
+
+Guard uses `pathToFileURL(path.resolve(process.argv[1])).href`. Each workflow `plan` step now fails with `::error::` when `$GITHUB_OUTPUT` has no `deploy=` line.
+
+**Prevention / lesson**
+
+A script that gates later steps through outputs must fail loudly when it emits none: assert the outputs in the workflow, and test the CLI as a subprocess with an absolute path, not only its exported functions. Never build file URLs by string concatenation; use `pathToFileURL`. A green deployment run is not proof of a deployment: check that the deploy step itself ran.
+
+**RAIDER impact**
+
+Durable (subprocess + static regression tests); Engineering-grade (fail-closed guard instead of silent skip); Agnostic (no OS-specific path handling).

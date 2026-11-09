@@ -2,6 +2,7 @@
 // before any secret is read. Pure functions are exported for tests; the CLI prints a plan and GitHub outputs.
 import { readdirSync, statSync, existsSync, appendFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const PROJECT_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?$/;
 export const MODES = new Set(["plan", "preview", "production"]);
@@ -50,7 +51,7 @@ export function buildPlan(env) {
   return { mode, project, branch, deploy: mode !== "plan", ...dist };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const plan = buildPlan(process.env);
   console.log(`Cloudflare Pages ${plan.mode}: project=${plan.project} branch=${plan.branch} files=${plan.files} bytes=${plan.bytes} _headers=${plan.headers} _redirects=${plan.redirects}`);
   if (process.env.GITHUB_OUTPUT) {
