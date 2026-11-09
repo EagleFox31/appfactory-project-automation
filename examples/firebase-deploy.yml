@@ -1,0 +1,44 @@
+name: firebase
+
+# Deploys a static site to an existing Firebase project with GitHub OIDC + Workload Identity Federation:
+# no service-account key, no JSON secret. "plan" (pull requests) builds and validates without any credential;
+# "preview" publishes a temporary Hosting channel; "production" is accepted only from the default branch.
+# One-time bootstrap (verify, then apply): docs/gcp-wif-one-time-bootstrap.md. Contract: docs/reusable-firebase-deploy.md.
+# If firebase.json uses hosting.public ".", hosting.ignore must contain "**/.*" and "**/gha-creds-*.json".
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: plan, preview or production
+        type: choice
+        options: [plan, preview, production]
+        default: plan
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: firebase-${{ github.event_name == 'pull_request' && github.head_ref || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  firebase:
+    uses: EagleFox31/appfactory-project-automation/.github/workflows/reusable-firebase-deploy.yml@REVIEWED_APPFACTORY_SHA
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      appfactory_ref: REVIEWED_APPFACTORY_SHA
+      mode: ${{ github.event_name == 'pull_request' && 'plan' || (inputs.mode || 'production') }}
+      firebase_project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+      workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      targets: hosting
+      checkout_ref: ${{ github.sha }}
+      build_command: ""
+      github_environment: ${{ github.event_name == 'pull_request' && '' || 'production' }}
