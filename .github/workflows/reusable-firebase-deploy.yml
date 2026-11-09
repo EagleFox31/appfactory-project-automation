@@ -4,8 +4,9 @@ name: AppFactory reusable Firebase deployment
 # reviewed contract, then deploys Hosting (and optionally Firestore rules/indexes) to an existing Firebase
 # project. Authentication is GitHub OIDC + Workload Identity Federation impersonating a service account:
 # no key, no JSON secret, no legacy CLI token. Mode "plan" runs build + contract without any Google credential.
-# The credentials file created by google-github-actions/auth is written under RUNNER_TEMP (never in the
-# workspace, which a consumer may publish with hosting.public ".") and removed when the job ends.
+# google-github-actions/auth writes its credentials file into the workspace (GITHUB_* variables cannot be
+# overridden); the next step moves it under RUNNER_TEMP before any deploy, since a consumer may publish the
+# workspace with hosting.public ".", and the file is removed when the job ends.
 
 on:
   workflow_call:
@@ -220,16 +221,36 @@ jobs:
         if: ${{ steps.plan.outputs.deploy == 'true' }}
         id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        env:
-          # The action writes gha-creds-*.json into $GITHUB_WORKSPACE; redirect it outside the checkout so a
-          # consumer publishing its checkout (hosting.public ".") can never upload the credentials file.
-          GITHUB_WORKSPACE: ${{ env.FIREBASE_CREDENTIALS_DIR }}
         with:
           workload_identity_provider: ${{ inputs.workload_identity_provider }}
           service_account: ${{ inputs.service_account }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: true
+
+      # The runner ignores step-level overrides of GITHUB_WORKSPACE, so the action always writes gha-creds-*.json
+      # into the checkout. Move it out immediately (no consumer code runs in between) and re-export the variables
+      # the action set, including GOOGLE_GHA_CREDS_PATH used by its post-step cleanup.
+      - name: Move credentials file outside the workspace
+        if: ${{ steps.plan.outputs.deploy == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GOOGLE_APPLICATION_CREDENTIALS"
+          case "$src" in
+            "$FIREBASE_CREDENTIALS_DIR"/*) dest="$src" ;;
+            *)
+              [ -f "$src" ] || { echo "::error::credentials file not found"; exit 1; }
+              dest="$FIREBASE_CREDENTIALS_DIR/$(basename "$src")"
+              mv "$src" "$dest"
+              chmod 600 "$dest"
+              {
+                echo "GOOGLE_APPLICATION_CREDENTIALS=$dest"
+                echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=$dest"
+                echo "GOOGLE_GHA_CREDS_PATH=$dest"
+              } >> "$GITHUB_ENV"
+              ;;
+          esac
 
       - name: Verify credentials file location
         if: ${{ steps.plan.outputs.deploy == 'true' }}

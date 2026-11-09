@@ -63,7 +63,16 @@ test('reusable Firebase workflow: plan mode never authenticates; contract runs b
 test('reusable Firebase workflow: credentials file is written outside the workspace and removed', () => {
   assert.doesNotMatch(workflow, /^\s+FIREBASE_CREDENTIALS_DIR: \$\{\{ runner\.temp \}\}/m, 'runner context is not available in job-level env');
   assert.match(workflow, /echo "FIREBASE_CREDENTIALS_DIR=\$RUNNER_TEMP\/appfactory-firebase-credentials" >> "\$GITHUB_ENV"/);
-  assert.match(workflow, /id: auth[\s\S]*?env:\n\s+#[^\n]*\n\s+#[^\n]*\n\s+GITHUB_WORKSPACE: \$\{\{ env\.FIREBASE_CREDENTIALS_DIR \}\}/);
+  // GITHUB_* variables cannot be overridden per step: the file is moved out of the checkout right after auth.
+  assert.doesNotMatch(workflow, /^\s+GITHUB_WORKSPACE:/m, 'GITHUB_WORKSPACE override is ignored by the runner');
+  const authAt = workflow.indexOf('id: auth'), moveAt = workflow.indexOf('Move credentials file outside the workspace');
+  const verifyAt = workflow.indexOf('- name: Verify credentials file location');
+  assert.ok(authAt > 0 && moveAt > authAt && moveAt < verifyAt, 'move runs between auth and verification');
+  const move = workflow.slice(moveAt, verifyAt);
+  assert.match(move, /mv "\$src" "\$dest"/);
+  for (const v of ['GOOGLE_APPLICATION_CREDENTIALS', 'CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE', 'GOOGLE_GHA_CREDS_PATH']) {
+    assert.match(move, new RegExp(`echo "${v}=\\$dest"`), v);
+  }
   assert.match(workflow, /cleanup_credentials: true/);
   assert.match(workflow, /Verify credentials file location[\s\S]*?find "\$GITHUB_WORKSPACE" -name 'gha-creds-\*\.json'/);
   assert.match(workflow, /Remove credentials \(always\)\n\s+if: always\(\)[\s\S]*?rm -rf "\$FIREBASE_CREDENTIALS_DIR"/);
