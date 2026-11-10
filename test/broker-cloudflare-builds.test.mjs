@@ -54,7 +54,8 @@ test('native Cloudflare broker config pins current OIDC trust boundaries', () =>
   );
   assert.equal(
     wrangler.vars.DELEGATED_CALLER_WORKFLOW_REFS,
-    'EagleFox31/AgenStart/.github/workflows/project-broker-event-validation.yml@refs/heads/main'
+    'EagleFox31/AgenStart/.github/workflows/project-broker-event-validation.yml@refs/heads/main,'
+      + 'EagleFox31/Pr-cis-Translation/.github/workflows/project-automation.yml@refs/heads/main'
   );
 });
 
