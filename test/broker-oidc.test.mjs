@@ -200,7 +200,9 @@ test('non-owner actors require a public repository and exact trusted event calle
     { event_name: 'dynamic' }, { ref: 'refs/heads/feature' },
     { repository_visibility: 'private' },
     { workflow_ref: 'EagleFox31/AgenStart/.github/workflows/other.yml@refs/heads/main' },
-    { workflow_ref: 'another/repo/.github/workflows/project-automation.yml@refs/heads/main' }
+    { workflow_ref: 'another/repo/.github/workflows/project-automation.yml@refs/heads/main' },
+    { event_name: 'pull_request_target', ref: 'refs/heads/integration/main-1.7',
+      workflow_ref: 'EagleFox31/AgenStart/.github/workflows/project-automation.yml@refs/heads/integration/main-1.7' }
   ]) {
     assert.throws(() => validateWorkflowClaims({ ...delegated,
       claims: { ...base.claims, ...change }

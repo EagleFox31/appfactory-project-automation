@@ -25,7 +25,7 @@ The repository-owned deployment contract lives in `broker/wrangler.jsonc`:
 - Project auth provider: `oauth-app`;
 - OIDC audience: `appfactory-project-automation`;
 - reusable workflow allowlist: the currently validated immutable AppFactory runtime;
-- delegated caller allowlist: the isolated AgenStart `[broker-test]` workflow;
+- delegated caller allowlist: the isolated AgenStart `[broker-test]` workflow and the Précis Translator Project workflow on its protected default branch (`EagleFox31/Pr-cis-Translation/.github/workflows/project-automation.yml@refs/heads/main`), so collaborator Issues and pull requests targeting `main` are synchronized; pull requests targeting any other base branch stay rejected because that branch's workflow file is contributor-controlled;
 - organization owner actor mapping: `Trigenys:EagleFox31`, so Trigenys-owned repositories can use the same human OAuth authorization without pretending the organization ID is a user ID.
 
 The following values remain **Cloudflare Worker secrets** and are never committed to GitHub:
