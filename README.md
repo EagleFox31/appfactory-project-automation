@@ -186,6 +186,8 @@ jobs:
       issue_number: ${{ inputs.issue_number }}
 ```
 
+Consumers whose organization cannot run GitHub-hosted runners (billing or policy) pass a JSON runner selector through `runs_on`, for example `runs_on: ${{ vars.PROJECT_RUNS_ON || '"ubuntu-latest"' }}` with the repository variable set to `["self-hosted","my-runner"]`. Every job of the reusable workflow then runs there; the default stays `ubuntu-latest`.
+
 ### 3. Authorize AppFactory once
 
 For the hosted AppFactory broker, the Project owner authorizes the OAuth App once at `https://appfactory-project-token-broker.lawrynnjennifer.workers.dev/authorize`. This authorization is account-level and can be reused by compatible public repositories owned by the same account; **do not create a `PROJECT_TOKEN` secret in each repository**.

@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: v1
+      runs_on:
+        description: JSON runner selector for every job (a label string or a label array), for consumers that cannot use GitHub-hosted runners. Defaults to ubuntu-latest.
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
     secrets:
       project_token:
         description: Existing Projects-capable PAT. Required only when authentication is token.
@@ -48,7 +53,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     timeout-minutes: 2
     permissions: {}
     steps:
@@ -89,7 +94,7 @@ jobs:
   bootstrap-token:
     if: ${{ inputs.authentication == 'token' }}
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     timeout-minutes: 10
     concurrency:
       group: project-bootstrap-${{ github.repository }}
@@ -127,7 +132,7 @@ jobs:
     needs:
       - validate
       - bootstrap-token
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -160,7 +165,7 @@ jobs:
   bootstrap-github-app-user:
     if: ${{ inputs.authentication == 'github-app-user' || inputs.authentication == 'broker-user' }}
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     timeout-minutes: 10
     concurrency:
       group: project-bootstrap-${{ github.repository }}
@@ -200,7 +205,7 @@ jobs:
     needs:
       - validate
       - bootstrap-github-app-user
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     timeout-minutes: 10
     permissions:
       contents: read
