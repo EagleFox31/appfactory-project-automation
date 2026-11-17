@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: .release-please-manifest.json
+      runs_on:
+        description: JSON runner selector for the release job (a label string or a label array), for consumers that cannot use GitHub-hosted runners. Defaults to ubuntu-latest.
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
     secrets:
       release_token:
         description: Optional token used instead of GITHUB_TOKEN so release PRs can trigger normal CI.
@@ -74,7 +79,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     outputs:
       release_created: ${{ steps.release-manifest.outputs.release_created || steps.release-direct.outputs.release_created }}
       release_pr_created: ${{ steps.release-manifest.outputs.prs_created || steps.release-direct.outputs.prs_created }}

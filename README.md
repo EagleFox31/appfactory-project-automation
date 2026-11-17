@@ -186,7 +186,7 @@ jobs:
       issue_number: ${{ inputs.issue_number }}
 ```
 
-Consumers whose organization cannot run GitHub-hosted runners (billing or policy) pass a JSON runner selector through `runs_on`, for example `runs_on: ${{ vars.PROJECT_RUNS_ON || '"ubuntu-latest"' }}` with the repository variable set to `["self-hosted","my-runner"]`. Every job of the reusable workflow then runs there; the default stays `ubuntu-latest`.
+Consumers whose organization cannot run GitHub-hosted runners (billing or policy) pass a JSON runner selector through `runs_on`, for example `runs_on: ${{ vars.PROJECT_RUNS_ON || '"ubuntu-latest"' }}` with the repository variable set to `["self-hosted","my-runner"]`. Every job of the reusable workflow then runs there; the default stays `ubuntu-latest`. `reusable-release.yml` accepts the same `runs_on` input for its release job.
 
 ### 3. Authorize AppFactory once
 

@@ -23,6 +23,12 @@ test('generic release workflow is reusable and delegates semantic versioning to 
   assert.match(reusableRelease, /secrets\.release_token \|\| github\.token/);
 });
 
+test('generic release workflow lets consumers choose the runner and keeps ubuntu-latest as default', () => {
+  assert.match(reusableRelease, /runs_on:\n\s+description:[^\n]*\n\s+required: false\n\s+type: string\n\s+default: '"ubuntu-latest"'/);
+  assert.match(reusableRelease, /runs-on: \$\{\{ fromJSON\(inputs\.runs_on\) \}\}/);
+  assert.doesNotMatch(reusableRelease, /runs-on: ubuntu-latest/);
+});
+
 test('generic release workflow exposes release identity outputs', () => {
   assert.match(reusableRelease, /release_created:/);
   assert.match(reusableRelease, /tag_name:/);
