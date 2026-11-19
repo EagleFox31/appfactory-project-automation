@@ -48,7 +48,9 @@ permissions:
 jobs:
   visual-qa:
     name: Browser, accessibility and Lighthouse gates
-    runs-on: ubuntu-latest
+    # Keep the OS compatible with the pinned Playwright version below.
+    # ubuntu-latest can advance to an unsupported distribution without a code change.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
