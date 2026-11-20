@@ -85,9 +85,10 @@ Consumers that also run Project automation continue to pass `token` in their sep
 The reusable workflow adds a provider boundary above the Action:
 
 - `authentication: token` passes the existing dedicated PAT secret;
-- `authentication: github-app` creates a repository-scoped installation token with `Administration: write`, passes that token to the same Action input and attests that GitHub validated the requested capability.
+- `authentication: github-app` creates a repository-scoped installation token with `Administration: write`, passes that token to the same Action input and attests that GitHub validated the requested capability;
+- `authentication: broker-app` obtains the same repository-scoped installation token from the AppFactory governance broker in exchange for a GitHub Actions OIDC proof, so the App private key is held once by the broker instead of once per repository; the token is masked, checked against `github.repository` and revoked when the job ends.
 
-The GitHub App client ID and private key are workflow-layer concerns. They must not enter configuration JSON, the REST client, policy normalization or reconciliation. This preserves authentication-provider agnosticity while allowing PAT-backed repositories to migrate without changing desired state or managed resource identity. See [GitHub App onboarding](../github-app-onboarding.md).
+The GitHub App client ID, private key and broker URL are workflow-layer concerns. They must not enter configuration JSON, the REST client, policy normalization or reconciliation. This preserves authentication-provider agnosticity while allowing PAT-backed repositories to migrate without changing desired state or managed resource identity. See [GitHub App onboarding](../github-app-onboarding.md).
 
 For a user-owned repository, the token owner must have admin access to that repository. For an organization-owned repository, the token owner must have an admin-capable organization/repository role, the organization must approve the credential when its policy requires approval, and the repository must be selected for the fine-grained token.
 

@@ -19,7 +19,7 @@ on:
         type: string
         default: v1
       authentication:
-        description: Credential source. Use token for the existing PAT flow or github-app for a short-lived installation token.
+        description: Credential source. Use token for the existing PAT flow, github-app for a short-lived installation token created from a repository-held private key, or broker-app for a short-lived installation token issued by the AppFactory broker from a GitHub Actions OIDC proof (no key in the repository).
         required: false
         type: string
         default: token
@@ -28,6 +28,16 @@ on:
         required: false
         type: string
         default: ''
+      broker_url:
+        description: HTTPS endpoint that exchanges a GitHub Actions OIDC proof for a repository-scoped GitHub App installation token. Required only when authentication is broker-app.
+        required: false
+        type: string
+        default: ''
+      broker_audience:
+        description: OIDC audience enforced by the AppFactory governance broker.
+        required: false
+        type: string
+        default: appfactory-governance
     secrets:
       governance_token:
         description: Dedicated PAT with Administration write access. Required only when authentication is token.
@@ -47,6 +57,9 @@ jobs:
   govern:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Validate governance authentication
         shell: bash
@@ -54,6 +67,7 @@ jobs:
           AUTHENTICATION: ${{ inputs.authentication }}
           APP_CLIENT_ID: ${{ inputs.app_client_id }}
           APP_PRIVATE_KEY: ${{ secrets.app_private_key }}
+          BROKER_URL: ${{ inputs.broker_url }}
           GOVERNANCE_TOKEN: ${{ secrets.governance_token }}
         run: |
           case "$AUTHENTICATION" in
@@ -73,8 +87,22 @@ jobs:
                 exit 1
               fi
               ;;
+            broker-app)
+              if [[ -z "$BROKER_URL" ]]; then
+                echo '::error title=Missing governance broker::authentication=broker-app requires the broker_url input.'
+                exit 1
+              fi
+              if [[ "$BROKER_URL" != https://* ]]; then
+                echo '::error title=Insecure governance broker::broker_url must use https.'
+                exit 1
+              fi
+              if [[ -n "$APP_PRIVATE_KEY" || -n "$GOVERNANCE_TOKEN" ]]; then
+                echo '::error title=Mixed governance authentication::authentication=broker-app must not receive app_private_key or governance_token.'
+                exit 1
+              fi
+              ;;
             *)
-              echo "::error title=Invalid authentication mode::Expected token or github-app, received $AUTHENTICATION."
+              echo "::error title=Invalid authentication mode::Expected token, github-app or broker-app, received $AUTHENTICATION."
               exit 1
               ;;
           esac
@@ -87,6 +115,59 @@ jobs:
           client-id: ${{ inputs.app_client_id }}
           private-key: ${{ secrets.app_private_key }}
           permission-administration: write
+
+      - name: Exchange OIDC identity for a brokered governance token
+        if: ${{ inputs.authentication == 'broker-app' }}
+        id: broker-token
+        shell: bash
+        env:
+          BROKER_URL: ${{ inputs.broker_url }}
+          BROKER_AUDIENCE: ${{ inputs.broker_audience }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo '::error title=OIDC unavailable::The calling workflow must grant permissions id-token: write to use authentication=broker-app.'
+            exit 1
+          fi
+
+          oidc_token="$(curl --silent --show-error --fail \
+            --header "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            --header 'Accept: application/json; api-version=2.0' \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${BROKER_AUDIENCE}" | jq -r '.value // empty')"
+          if [[ -z "$oidc_token" ]]; then
+            echo '::error title=OIDC token missing::GitHub did not return an OIDC token for the governance broker audience.'
+            exit 1
+          fi
+          echo "::add-mask::${oidc_token}"
+
+          response_file="${RUNNER_TEMP}/governance-broker-response.json"
+          status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer ${oidc_token}" \
+            --header 'Accept: application/json' \
+            "$BROKER_URL")"
+          if [[ "$status" != "200" ]]; then
+            error_code="$(jq -r '.error // "UNKNOWN"' "$response_file" 2>/dev/null || echo UNKNOWN)"
+            error_message="$(jq -r '.message // empty' "$response_file" 2>/dev/null || true)"
+            rm -f "$response_file"
+            echo "::error title=Governance broker refused the exchange (HTTP ${status} ${error_code})::${error_message:-No details returned.}"
+            exit 1
+          fi
+
+          governance_token="$(jq -r '.token // empty' "$response_file")"
+          repository="$(jq -r '.repository // empty' "$response_file")"
+          rm -f "$response_file"
+          if [[ -z "$governance_token" ]]; then
+            echo '::error title=Governance broker returned no token::The broker response did not contain a token.'
+            exit 1
+          fi
+          echo "::add-mask::${governance_token}"
+          if [[ "$repository" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error title=Governance token scope mismatch::The broker issued a token for ${repository:-an unknown repository} instead of ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+          echo "token=${governance_token}" >> "$GITHUB_OUTPUT"
+          echo "Brokered governance token issued for ${repository} (administration: write, one hour, revoked at job end)."
 
       - name: Checkout trusted default branch
         uses: actions/checkout@v4
@@ -105,7 +186,25 @@ jobs:
       - name: Reconcile repository governance
         uses: ./.appfactory
         with:
-          governance-token: ${{ inputs.authentication == 'github-app' && steps.app-token.outputs.token || secrets.governance_token }}
-          governance-administration-verified: ${{ inputs.authentication == 'github-app' }}
+          governance-token: ${{ inputs.authentication == 'broker-app' && steps.broker-token.outputs.token || inputs.authentication == 'github-app' && steps.app-token.outputs.token || secrets.governance_token }}
+          governance-administration-verified: ${{ inputs.authentication == 'github-app' || inputs.authentication == 'broker-app' }}
           governance-mode: ${{ inputs.governance_mode }}
           config-path: ${{ inputs.config_path }}
+
+      - name: Revoke brokered governance token
+        if: ${{ always() && inputs.authentication == 'broker-app' && steps.broker-token.outputs.token != '' }}
+        shell: bash
+        env:
+          GOVERNANCE_TOKEN: ${{ steps.broker-token.outputs.token }}
+        run: |
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request DELETE \
+            --header "Authorization: Bearer ${GOVERNANCE_TOKEN}" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            https://api.github.com/installation/token)"
+          if [[ "$status" == "204" ]]; then
+            echo 'Brokered governance token revoked.'
+          else
+            echo "::warning title=Governance token not revoked::GitHub returned HTTP ${status}; the token still expires within one hour."
+          fi
